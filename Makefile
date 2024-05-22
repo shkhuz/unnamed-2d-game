@@ -1,17 +1,17 @@
 SRCS := \
-	imgui/imgui_widgets.cpp \
-	imgui/imgui_tables.cpp \
-	imgui/imgui_draw.cpp \
-	imgui/imgui_demo.cpp \
-	imgui/imgui.cpp \
-	imgui/imgui_stdlib.cpp \
-	imgui/imgui_impl_sdl2.cpp \
-	imgui/imgui_impl_opengl3.cpp \
+	thirdparty/imgui/imgui_widgets.cpp \
+	thirdparty/imgui/imgui_tables.cpp \
+	thirdparty/imgui/imgui_draw.cpp \
+	thirdparty/imgui/imgui_demo.cpp \
+	thirdparty/imgui/imgui.cpp \
+	thirdparty/imgui/imgui_stdlib.cpp \
+	thirdparty/imgui/imgui_impl_sdl2.cpp \
+	thirdparty/imgui/imgui_impl_opengl3.cpp \
 	src/main.cpp
 
 OBJS := $(addprefix build/obj/, $(addsuffix .o, $(SRCS)))
 
-INCLUDES := -I/usr/include/SDL2
+INCLUDES := -I/usr/include/SDL2 -Ithirdparty
 LIBS := -lSDL2 -lSDL2_image -lGLEW -lGL -lglm
 FLAGS := -g -Wall -Wextra
 
