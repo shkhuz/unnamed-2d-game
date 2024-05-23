@@ -4,6 +4,7 @@ class Shader {
 public:
     GLuint id;
     bool init_from_string(GLenum kind, const char* src);
+    bool init_from_file(GLenum kind, const char* path);
     void attach_to(ShaderProgram* program);
     void detach_from(ShaderProgram* program);
     void destroy();
@@ -14,10 +15,23 @@ public:
     GLuint id;
     Shader vshader;
     Shader fshader;
+
     bool init_from_strings(const char* vs, const char* fs);
+    bool init_from_files(const char* vspath, const char* fspath);
+    bool lateinit();
     void use();
     void upload_mat4(const char* var, glm::mat4 mat4);
 };
+
+static const char* shader_kind_to_string(GLenum kind) {
+    const char* name;
+    switch (kind) {
+        case GL_VERTEX_SHADER: name = "vertex"; break;
+        case GL_FRAGMENT_SHADER: name = "fragment"; break;
+        default: name = "unknown"; break;
+    }
+    return name;
+}
 
 bool Shader::init_from_string(GLenum kind, const char* src) {
     id = glCreateShader(kind);
@@ -33,17 +47,28 @@ bool Shader::init_from_string(GLenum kind, const char* src) {
         GLchar log[4096];
         glGetShaderInfoLog(id, loglen, NULL, log);
 
-        const char* name;
-        switch (kind) {
-            case GL_VERTEX_SHADER: name = "vertex"; break;
-            case GL_FRAGMENT_SHADER: name = "fragment"; break;
-            default: name = "unknown"; break;
-        }
-        fprintf(stderr, "Compilation failure in %s shader: %s\n", name, log);
+        fprintf(
+            stderr,
+            "Compilation failure in %s shader: %s\n",
+            shader_kind_to_string(kind),
+            log
+        );
         return false;
     }
     return true;
 };
+
+bool Shader::init_from_file(GLenum kind, const char* path) {
+    FileOrError src = read_file(path);
+    if (src.status != FILEOP_SUCCESS) {
+        fprintf(stderr, "Error reading %s shader in path %s\n", shader_kind_to_string(kind), path);
+        return false;
+    } else {
+        printf("%s shader %s loaded successfully\n", shader_kind_to_string(kind), path);
+    }
+
+    return this->init_from_string(kind, src.handle.contents);
+}
 
 void Shader::attach_to(ShaderProgram* program) {
     glAttachShader(program->id, this->id);
@@ -57,12 +82,7 @@ void Shader::destroy() {
     glDeleteShader(this->id);
 }
 
-bool ShaderProgram::init_from_strings(const char* vs, const char* fs) {
-    id = glCreateProgram();
-
-    if (!vshader.init_from_string(GL_VERTEX_SHADER, vs)) return false;
-    if (!fshader.init_from_string(GL_FRAGMENT_SHADER, fs)) return false;
-
+bool ShaderProgram::lateinit() {
     vshader.attach_to(this);
     fshader.attach_to(this);
 
@@ -84,6 +104,20 @@ bool ShaderProgram::init_from_strings(const char* vs, const char* fs) {
     fshader.detach_from(this);
 
     return true;
+}
+
+bool ShaderProgram::init_from_strings(const char* vs, const char* fs) {
+    id = glCreateProgram();
+    if (!vshader.init_from_string(GL_VERTEX_SHADER, vs)) return false;
+    if (!fshader.init_from_string(GL_FRAGMENT_SHADER, fs)) return false;
+    return this->lateinit();
+}
+
+bool ShaderProgram::init_from_files(const char* vspath, const char* fspath) {
+    id = glCreateProgram();
+    if (!vshader.init_from_file(GL_VERTEX_SHADER, vspath)) return false;
+    if (!fshader.init_from_file(GL_FRAGMENT_SHADER, fspath)) return false;
+    return this->lateinit();
 }
 
 void ShaderProgram::use() {

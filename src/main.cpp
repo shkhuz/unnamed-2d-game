@@ -11,42 +11,15 @@
 #include <stdio.h>
 #include <chrono>
 
-#include "shader.cpp"
-#include "camera.cpp"
-
-const char* vertex_src =
-    "#version 330\n"
-    "layout(location = 0) in vec3 position;\n"
-    "layout(location = 1) in vec4 color;\n"
-    "layout(location = 2) in vec2 texcoords;\n"
-    "uniform mat4 proj;\n"
-    "uniform mat4 view;\n"
-    "out vec4 fvertex_color;\n"
-    "out vec2 ftexcoords;\n"
-    "void main() {\n"
-    "   gl_Position = proj * view * vec4(position, 1.0);\n"
-    "   fvertex_color = color;\n"
-    "   ftexcoords = texcoords;\n"
-    "}\n"
-    ""
-    ;
-
-const char* fragment_src =
-    "#version 330\n"
-    "in vec4 fvertex_color;\n"
-    "in vec2 ftexcoords;\n"
-    "out vec4 out_color;\n"
-    "uniform sampler2D tex;\n"
-    "void main() {\n"
-    "   out_color = texture(tex, ftexcoords);\n"
-    "}\n"
-    ""
-    ;
-
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
+typedef size_t usize;
+
+#include "io.cpp"
+#include "shader.cpp"
+#include "camera.cpp"
 
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
@@ -128,18 +101,6 @@ int main() {
         }
     }
 
-    //float vertices[] = {
-    //    quadpos.x+0.0f, quadpos.y+size, 0.0f,    1.0f, 0.0f, 0.0f, 1.0f,      0.0f, 0.0f,
-    //    quadpos.x+size, quadpos.y+size, 0.0f,    0.0f, 1.0f, 0.0f, 1.0f,      1.0f, 0.0f,
-    //    quadpos.x+size, quadpos.y+0.0f, 0.0f,    0.0f, 0.0f, 1.0f, 1.0f,      1.0f, 1.0f,
-    //    quadpos.x+0.0f, quadpos.y+0.0f, 0.0f,    1.0f, 0.0f, 0.0f, 1.0f,      0.0f, 1.0f,
-    //
-    //    quad2pos.x+0.0f, quad2pos.y+size, 0.0f,    1.0f, 0.0f, 0.0f, 1.0f,    0.0f, 0.0f,
-    //    quad2pos.x+size, quad2pos.y+size, 0.0f,    0.0f, 1.0f, 0.0f, 1.0f,    1.0f, 0.0f,
-    //    quad2pos.x+size, quad2pos.y+0.0f, 0.0f,    0.0f, 0.0f, 1.0f, 1.0f,    1.0f, 1.0f,
-    //    quad2pos.x+0.0f, quad2pos.y+0.0f, 0.0f,    1.0f, 0.0f, 0.0f, 1.0f,    0.0f, 1.0f,
-    //};
-
     int sizeof_indices = num_quads * 6 * sizeof(int);
     printf("sizeof_indices: %d\n", sizeof_indices);
     int* indices = (int*)malloc(sizeof_indices);
@@ -154,14 +115,6 @@ int main() {
         indices[offset+4] = 0 + i*4;
         indices[offset+5] = 3 + i*4;
     }
-
-    //int vert_indices[] = {
-    //    3, 2, 1,
-    //    1, 0, 3,
-    //
-    //    7, 6, 5,
-    //    5, 4, 7,
-    //};
 
     GLuint vao;
     glGenVertexArrays(1, &vao);
@@ -224,7 +177,10 @@ int main() {
     glBindVertexArray(0);
 
     ShaderProgram shader;
-    if (!shader.init_from_strings(vertex_src, fragment_src)) return 1;
+    if (!shader.init_from_files(
+        "res/shaders/sprite_vertex.glsl",
+        "res/shaders/sprite_fragment.glsl")
+    ) return 1;
 
     GLuint tex;
     glGenTextures(1, &tex);
