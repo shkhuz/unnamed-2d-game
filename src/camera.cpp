@@ -3,16 +3,16 @@ public:
     glm::mat4 proj;
     glm::mat4 view;
     glm::vec2 pos;
+    float zoom = 1.0f;
 
     Camera() {
         this->pos = glm::vec2();
     }
 
     void set_proj() {
-        float width = 1000.0f;
+        float width = 1000.0f * zoom;
         float height = (360.0f/640.0f)*width;
-        printf("Setting projection to (%f, %f)\n", width, height);
-        proj = glm::ortho(0.0f, width, 0.0f, height, 0.0f, 100.0f);
+        proj = glm::ortho(-width/2, width/2, -height/2, height/2, 0.0f, 100.0f);
     }
 
     void set_view() {

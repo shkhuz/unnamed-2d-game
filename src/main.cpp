@@ -9,6 +9,8 @@
 #include <imgui/imgui_impl_opengl3.h>
 
 #include <stdio.h>
+#include <time.h>
+#include <stdlib.h>
 #include <chrono>
 
 typedef uint8_t u8;
@@ -22,8 +24,9 @@ typedef size_t usize;
 #include "camera.cpp"
 
 int main() {
+    srand(time(NULL));
     SDL_Init(SDL_INIT_VIDEO);
-    IMG_Init(IMG_INIT_PNG);
+    IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -32,9 +35,12 @@ int main() {
         "OpenGL",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
-        640,
-        360,
-        SDL_WINDOW_OPENGL
+        1920,
+        1080,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN
+        //640,
+        //360,
+        //SDL_WINDOW_OPENGL
     );
 
     SDL_GLContext glctx = SDL_GL_CreateContext(window);
@@ -50,21 +56,25 @@ int main() {
     ImGui_ImplSDL2_InitForOpenGL(window, glctx);
     ImGui_ImplOpenGL3_Init();
 
-    SDL_Surface* png = IMG_Load("res/img.png");
+    SDL_Surface* png = IMG_Load("res/atlas.jpg");
     if (!png) {
-        fprintf(stderr, "Unable to load png: %s\n", IMG_GetError());
+        fprintf(stderr, "Unable to load img: %s\n", IMG_GetError());
         return 1;
     }
 
-    float size = 350.0f;
-    glm::vec2 quads[] = {
-        glm::vec2(0.0f, 0.0f),
-        glm::vec2(500.0f, 0.0f),
-        glm::vec2(1000.0f, 0.0f),
-        glm::vec2(1000.0f, 500.0f),
-    };
-    int num_quads = sizeof(quads)/sizeof(glm::vec2);
-    printf("num quads: %d\n", num_quads);
+    Camera camera;
+
+    float size = 16.0f;
+    int quads_in_row = 32;
+    int num_quads = quads_in_row * quads_in_row;
+    glm::vec2* quads = (glm::vec2*)malloc(sizeof(glm::vec2)*num_quads);
+    for (int i = 0; i < quads_in_row; i++) {
+        for (int j = 0; j < quads_in_row; j++) {
+            quads[j*(quads_in_row) + i] = glm::vec2(j*size, i*size);
+        }
+    }
+    camera.pos.x = quads_in_row/2 * size;
+    camera.pos.y = quads_in_row/2 * size;
 
     const glm::vec2 VERTEX_OFFSET_LOOKUP[4] = {
         glm::vec2(0.0f, size),
@@ -73,17 +83,28 @@ int main() {
         glm::vec2(0.0f, 0.0f),
     };
 
-    const glm::vec2 TEXCOORDS_LOOKUP[4] = {
+    const glm::vec2 TEAL_TEXCOORDS_LOOKUP[4] = {
         glm::vec2(0.0f, 0.0f),
+        glm::vec2(0.5f, 0.0f),
+        glm::vec2(0.5f, 1.0f),
+        glm::vec2(0.0f, 1.0f),
+    };
+
+    const glm::vec2 DRY_TEXCOORDS_LOOKUP[4] = {
+        glm::vec2(0.5f, 0.0f),
         glm::vec2(1.0f, 0.0f),
         glm::vec2(1.0f, 1.0f),
-        glm::vec2(0.0f, 1.0f),
+        glm::vec2(0.5f, 1.0f),
     };
 
     int sizeof_vertices = num_quads * 9 * 4 * sizeof(float);
     printf("sizeof_vertices: %d\n", sizeof_vertices);
     float* vertices = (float*)malloc(sizeof_vertices);
     for (int i = 0; i < num_quads; i++) {
+        float random = (float)rand() / (float)(RAND_MAX/1.0f);
+        auto texlookup = &TEAL_TEXCOORDS_LOOKUP;
+        if (random > 0.5) texlookup = &DRY_TEXCOORDS_LOOKUP;
+
         for (int j = 0; j < 4; j++) {
             int offset = i*9*4 + j*9;
 
@@ -96,8 +117,8 @@ int main() {
             vertices[offset+5] = 1.0f;
             vertices[offset+6] = 1.0f;
 
-            vertices[offset+7] = TEXCOORDS_LOOKUP[j].x;
-            vertices[offset+8] = TEXCOORDS_LOOKUP[j].y;
+            vertices[offset+7] = (*texlookup)[j].x;
+            vertices[offset+8] = (*texlookup)[j].y;
         }
     }
 
@@ -203,16 +224,16 @@ int main() {
     );
     SDL_FreeSurface(png);
 
-    Camera camera;
-    camera.set_proj();
-    camera.set_view();
-
     auto begin_time = std::chrono::high_resolution_clock::now();
     auto end_time = begin_time;
     float dt = -1.0f;
 
-    const float CAM_SPEED = 400.0f;
+    const float CAM_SPEED = 200.0f;
+    const float CAM_ZOOM_SPEED = 0.04f;
+
     glm::vec2 camvel = glm::vec2();
+
+    bool wpress = false, apress = false, spress = false, dpress = false;
 
     bool running = true;
     while (running) {
@@ -222,27 +243,36 @@ int main() {
             if (e.type == SDL_QUIT) running = false;
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 switch (e.key.keysym.sym) {
-                    case SDLK_a: camvel.x = -CAM_SPEED; break;
-                    case SDLK_d: camvel.x =  CAM_SPEED;  break;
-                    case SDLK_w: camvel.y =  CAM_SPEED;  break;
-                    case SDLK_s: camvel.y = -CAM_SPEED; break;
-                    case SDLK_q: camera.pos = glm::vec2(); break;
+                    case SDLK_w: wpress = true; break;
+                    case SDLK_a: apress = true; break;
+                    case SDLK_s: spress = true; break;
+                    case SDLK_d: dpress = true; break;
                     case SDLK_ESCAPE: running = false; break;
+                    case SDLK_q: {
+                        camera.pos = glm::vec2();
+                        camera.zoom = 1.0f;
+                    } break;
                 }
             } else if (e.type == SDL_KEYUP) {
                 switch (e.key.keysym.sym) {
-                    case SDLK_a:
-                    case SDLK_d:
-                        camvel.x = 0;
-                        break;
-
-                    case SDLK_w:
-                    case SDLK_s:
-                        camvel.y = 0;
-                        break;
+                    case SDLK_w: wpress = false; break;
+                    case SDLK_a: apress = false; break;
+                    case SDLK_s: spress = false; break;
+                    case SDLK_d: dpress = false; break;
+                }
+            } else if (e.type == SDL_MOUSEWHEEL) {
+                float subt_from_zoom = e.wheel.preciseY * CAM_ZOOM_SPEED;
+                if (camera.zoom - subt_from_zoom > 0.5f &&
+                    camera.zoom - subt_from_zoom < 3.0f) {
+                    camera.zoom -= subt_from_zoom;
                 }
             }
         }
+
+        float diafactor = 1.0f;
+        if ((wpress || spress) && (apress || dpress)) diafactor = 0.7f;
+        camvel.x = ((int)dpress - (int)apress) * CAM_SPEED * diafactor;
+        camvel.y = ((int)wpress - (int)spress) * CAM_SPEED * diafactor;
 
         camera.pos += dt * camvel;
 
@@ -253,10 +283,13 @@ int main() {
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
+        camera.set_proj();
         camera.set_view();
         ImGui::Text("fps: %f", 1.0f/dt);
         ImGui::Text("dt: %f", dt);
         ImGui::Text("cam_pos: (%f, %f)", camera.pos.x, camera.pos.y);
+        ImGui::Text("cam_vel: (%f, %f)", camvel.x, camvel.y);
+        ImGui::Text("cam_zoom: %f", camera.zoom);
 
         shader.use();
         shader.upload_mat4("proj", camera.proj);
