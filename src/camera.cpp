@@ -1,13 +1,14 @@
 class Camera {
 public:
+    static constexpr float CAM_SPEED = 200.0f;
+    static constexpr float CAM_ZOOM_SPEED = 0.04f;
+
     glm::mat4 proj;
     glm::mat4 view;
-    glm::vec2 pos;
-    float zoom = 1.0f;
 
-    Camera() {
-        this->pos = glm::vec2();
-    }
+    float zoom = 1.0f;
+    glm::vec2 pos = glm::vec2();
+    glm::vec2 vel = glm::vec2();
 
     void set_proj() {
         float width = 1000.0f * zoom;

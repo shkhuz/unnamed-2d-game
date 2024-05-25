@@ -23,6 +23,10 @@ typedef size_t usize;
 #include "shader.cpp"
 #include "camera.cpp"
 
+//int WIDTH = 640;
+//int HEIGHT = 360;
+//int FLAGS = SDL_WINDOW_OPENGL;
+
 int WIDTH = 1280;
 int HEIGHT = 720;
 int FLAGS = SDL_WINDOW_OPENGL;
@@ -38,6 +42,14 @@ public:
     }
 };
 
+class Math {
+public:
+    static int smart_floor(float x) {
+        if (x >= 0.0f) return (int)x;
+        else return (int)(x-1.0f);
+    }
+};
+
 class ChunkSlot {
 public:
     static constexpr float TILE_SIZE = 16.0f;
@@ -50,50 +62,179 @@ public:
         glm::vec2(0.0f,      0.0f),
     };
 
-    static const int STATIC_ATTR_LEN = 6;
-    static const int DYNAMIC_ATTR_LEN = 2;
+    static constexpr float TEAL_TEXCOORDS_LOOKUP[] = {
+        0.0f, 0.0f,
+        0.5f, 0.0f,
+        0.5f, 1.0f,
+        0.0f, 1.0f,
+    };
 
-    glm::vec3 quad_data[ROWS * ROWS];
+    static constexpr float DRY_TEXCOORDS_LOOKUP[] = {
+        0.5f, 0.0f,
+        1.0f, 0.0f,
+        1.0f, 1.0f,
+        0.5f, 1.0f,
+    };
 
-    float  static_vertex_data[ROWS*ROWS * 4 * STATIC_ATTR_LEN  * sizeof(float)];
-    float dynamic_vertex_data[ROWS*ROWS * 4 * DYNAMIC_ATTR_LEN * sizeof(float)];
-    GLuint vao, static_vbo, dynamic_vbo;
+    static const int POSITION_ATTR_LEN = 2;
+    static const int COLOR_ATTR_LEN = 4;
+    static const int TEXCOORS_ATTR_LEN = 2;
+    static const int STATIC_ATTR_LEN = POSITION_ATTR_LEN + COLOR_ATTR_LEN;
+    static const int DYNAMIC_ATTR_LEN = TEXCOORS_ATTR_LEN;
 
-    void init_render_buffers() {
-        glGenVertexArrays(1, &vao);
-        glBindVertexArray(vao);
-        glGenBuffers(1, &static_vbo);
-        glGenBuffers(1, &dynamic_vbo);
-    }
+    static const int STATIC_VERTEX_DATA_LEN = ROWS*ROWS * 4 * STATIC_ATTR_LEN;
+    static const int DYNAMIC_VERTEX_DATA_LEN = ROWS*ROWS * 4 * DYNAMIC_ATTR_LEN;
+    static const int INDICES_DATA_LEN = ROWS*ROWS * 6;
 
-    void load_quad_data(int chunkX, int chunkY) {
+    float  static_vertex_data[STATIC_VERTEX_DATA_LEN];
+    float dynamic_vertex_data[DYNAMIC_VERTEX_DATA_LEN];
+    int indices_data[INDICES_DATA_LEN];
+
+    GLuint vao, static_vbo, dynamic_vbo, ibo;
+
+    glm::vec2 static_quad_data[ROWS * ROWS];
+    float dynamic_quad_data[ROWS * ROWS];
+    int chunkx = 0, chunky = 0;
+
+    void init_static_quad_data() {
         for (int i = 0; i < ROWS; i++) {
             for (int j = 0; j < ROWS; j++) {
-                quad_data[j*ROWS+i] = glm::vec3(
+                static_quad_data[j*ROWS+i] = glm::vec2(
                     i*TILE_SIZE,
-                    j*TILE_SIZE,
-                    Random::real()
+                    j*TILE_SIZE
                 );
             }
         }
     }
 
-    void fill_vertex_data() {
-        for (int q = 0; q < ROWS*ROWS; q++) {
-            for (int v = 0; v < 4; v++) {
-                int soffset = q*4*STATIC_ATTR_LEN + v*STATIC_ATTR_LEN;
-                static_vertex_data[soffset]   = quad_data[q].x + VERTEX_OFFSET_LOOKUP[v].x;
-                static_vertex_data[soffset+1] = quad_data[q].y + VERTEX_OFFSET_LOOKUP[v].y;
-
-                static_vertex_data[soffset+2] = 1.0f;
-                static_vertex_data[soffset+3] = 1.0f;
-                static_vertex_data[soffset+4] = 1.0f;
-                static_vertex_data[soffset+5] = 1.0f;
-
-                int doffset = q*4*DYNAMIC_ATTR_LEN + v*DYNAMIC_ATTR_LEN;
-                //dynamic_vertex_data[doffset] =
+    void load_dynamic_quad_data(int chunkx, int chunky) {
+        //printf("loading dynamic quad data for %d, %d\n", chunkx, chunky);
+        this->chunkx = chunkx;
+        this->chunky = chunky;
+        for (int i = 0; i < ROWS; i++) {
+            for (int j = 0; j < ROWS; j++) {
+                dynamic_quad_data[j*ROWS+i] = Random::real();
             }
         }
+    }
+
+    void fill_static_vertex_data() {
+        for (int q = 0; q < ROWS*ROWS; q++) {
+            for (int v = 0; v < 4; v++) {
+                int offset = q*4*STATIC_ATTR_LEN + v*STATIC_ATTR_LEN;
+                static_vertex_data[offset]   = static_quad_data[q].x + VERTEX_OFFSET_LOOKUP[v].x;
+                static_vertex_data[offset+1] = static_quad_data[q].y + VERTEX_OFFSET_LOOKUP[v].y;
+
+                static_vertex_data[offset+2] = 1.0f;
+                static_vertex_data[offset+3] = 1.0f;
+                static_vertex_data[offset+4] = 1.0f;
+                static_vertex_data[offset+5] = 1.0f;
+
+            }
+        }
+    }
+
+    void fill_dynamic_vertex_data() {
+        for (int q = 0; q < ROWS*ROWS; q++) {
+            auto tile = &TEAL_TEXCOORDS_LOOKUP;
+            if (dynamic_quad_data[q] > 0.5f) tile = &DRY_TEXCOORDS_LOOKUP;
+            for (int v = 0; v < 4; v++) {
+                int offset = q*4*DYNAMIC_ATTR_LEN + v*DYNAMIC_ATTR_LEN;
+                dynamic_vertex_data[offset]   = (*tile)[v*2];
+                dynamic_vertex_data[offset+1] = (*tile)[v*2+1];
+            }
+        }
+    }
+
+    void fill_indices_data() {
+        for (int q = 0; q < ROWS*ROWS; q++) {
+            int offset = q * 6;
+            indices_data[offset]   = 3 + q*4;
+            indices_data[offset+1] = 2 + q*4;
+            indices_data[offset+2] = 1 + q*4;
+
+            indices_data[offset+3] = 1 + q*4;
+            indices_data[offset+4] = 0 + q*4;
+            indices_data[offset+5] = 3 + q*4;
+        }
+    }
+
+    void update_dynamic_buffer() {
+        glBindBuffer(GL_ARRAY_BUFFER, dynamic_vbo);
+        glBufferData(
+            GL_ARRAY_BUFFER,
+            DYNAMIC_VERTEX_DATA_LEN*sizeof(float),
+            NULL,
+            GL_DYNAMIC_DRAW
+        );
+        glBufferData(
+            GL_ARRAY_BUFFER,
+            DYNAMIC_VERTEX_DATA_LEN*sizeof(float),
+            dynamic_vertex_data,
+            GL_DYNAMIC_DRAW
+        );
+    }
+
+    void init_render_buffers() {
+        glGenVertexArrays(1, &vao);
+        glBindVertexArray(vao);
+
+        glGenBuffers(1, &static_vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, static_vbo);
+        glBufferData(
+            GL_ARRAY_BUFFER,
+            STATIC_VERTEX_DATA_LEN*sizeof(float),
+            static_vertex_data,
+            GL_STATIC_DRAW
+        );
+
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(
+            0,
+            POSITION_ATTR_LEN,
+            GL_FLOAT,
+            GL_FALSE,
+            STATIC_ATTR_LEN*sizeof(float),
+            (void*)(0)
+        );
+        glVertexAttribPointer(
+            1,
+            COLOR_ATTR_LEN,
+            GL_FLOAT,
+            GL_FALSE,
+            STATIC_ATTR_LEN*sizeof(float),
+            (void*)(POSITION_ATTR_LEN*sizeof(float))
+        );
+
+        glGenBuffers(1, &dynamic_vbo);
+        update_dynamic_buffer();
+
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(
+            2,
+            TEXCOORS_ATTR_LEN,
+            GL_FLOAT,
+            GL_FALSE,
+            0,
+            (void*)(0)
+        );
+
+        glGenBuffers(1, &ibo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+        glBufferData(
+            GL_ELEMENT_ARRAY_BUFFER,
+            INDICES_DATA_LEN*sizeof(int),
+            indices_data,
+            GL_STATIC_DRAW
+        );
+
+        glBindVertexArray(0);
+    }
+
+    void render() {
+        glBindVertexArray(vao);
+        glDrawElements(GL_TRIANGLES, ROWS*ROWS * 6, GL_UNSIGNED_INT, 0);
     }
 };
 
@@ -140,152 +281,16 @@ int main() {
 
     Camera camera;
 
-    float size = 16.0f;
-    int quads_in_row = 100;
-    int num_quads = quads_in_row * quads_in_row;
-    printf("num_quads: %d\n", num_quads);
-    glm::vec3* quads = (glm::vec3*)malloc(sizeof(glm::vec3)*num_quads);
-    for (int i = 0; i < quads_in_row; i++) {
-        for (int j = 0; j < quads_in_row; j++) {
-            quads[j*(quads_in_row) + i] = glm::vec3(i*size, j*size, Random::real());
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            cslots[i*3+j].init_static_quad_data();
+            cslots[i*3+j].load_dynamic_quad_data(j-1, i-1);
+            cslots[i*3+j].fill_static_vertex_data();
+            cslots[i*3+j].fill_dynamic_vertex_data();
+            cslots[i*3+j].fill_indices_data();
+            cslots[i*3+j].init_render_buffers();
         }
     }
-    //camera.pos.x = quads_in_row/2 * size;
-    //camera.pos.y = quads_in_row/2 * size;
-
-    const glm::vec2 VERTEX_OFFSET_LOOKUP[4] = {
-        glm::vec2(0.0f,      size),
-        glm::vec2(size, size),
-        glm::vec2(size, 0.0f),
-        glm::vec2(0.0f,      0.0f),
-    };
-
-    const float TEAL_TEXCOORDS_LOOKUP[] = {
-        0.0f, 0.0f,
-        0.5f, 0.0f,
-        0.5f, 1.0f,
-        0.0f, 1.0f,
-    };
-
-    const float DRY_TEXCOORDS_LOOKUP[] = {
-        0.5f, 0.0f,
-        1.0f, 0.0f,
-        1.0f, 1.0f,
-        0.5f, 1.0f,
-    };
-
-    int sizeof_static_vertdata = num_quads * 7 * 4 * sizeof(float);
-    printf("sizeof_static_vertdata: %d KB\n", sizeof_static_vertdata/1000);
-    float* static_vertdata = (float*)malloc(sizeof_static_vertdata);
-    for (int i = 0; i < num_quads; i++) {
-        for (int j = 0; j < 4; j++) {
-            int offset = i*7*4 + j*7;
-
-            static_vertdata[offset] =   quads[i].x + VERTEX_OFFSET_LOOKUP[j].x;
-            static_vertdata[offset+1] = quads[i].y + VERTEX_OFFSET_LOOKUP[j].y;
-            static_vertdata[offset+2] = 0.0f;
-
-            static_vertdata[offset+3] = 1.0f;
-            static_vertdata[offset+4] = 1.0f;
-            static_vertdata[offset+5] = 1.0f;
-            static_vertdata[offset+6] = 1.0f;
-        }
-    }
-
-    int sizeof_dynamic_vertdata = num_quads * 2 * 4 * sizeof(float);
-    printf("sizeof_dynamic_vertdata: %d KB\n", sizeof_dynamic_vertdata/1000);
-    float* dynamic_vertdata = (float*)malloc(sizeof_dynamic_vertdata);
-
-    for (int i = 0; i < num_quads; i++) {
-        auto texlookup = &TEAL_TEXCOORDS_LOOKUP;
-        if (quads[i].z > 0.5f) texlookup = &DRY_TEXCOORDS_LOOKUP;
-        memcpy(dynamic_vertdata + i*2*4, *texlookup, sizeof(float)*8);
-    }
-
-    int sizeof_indices = num_quads * 6 * sizeof(int);
-    printf("sizeof_indices: %d KB\n", sizeof_indices/1000);
-    int* indices = (int*)malloc(sizeof_indices);
-    for (int i = 0; i < num_quads; i++) {
-        int offset = i * 6;
-
-        indices[offset]   = 3 + i*4;
-        indices[offset+1] = 2 + i*4;
-        indices[offset+2] = 1 + i*4;
-
-        indices[offset+3] = 1 + i*4;
-        indices[offset+4] = 0 + i*4;
-        indices[offset+5] = 3 + i*4;
-    }
-
-    GLuint vao;
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
-
-    GLuint static_vbo;
-    glGenBuffers(1, &static_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, static_vbo);
-    glBufferData(
-        GL_ARRAY_BUFFER,
-        sizeof_static_vertdata,
-        static_vertdata,
-        GL_STATIC_DRAW
-    );
-
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-
-    int position_floats = 3;
-    int color_floats = 4;
-    int total_floats = position_floats + color_floats;
-    int stride = total_floats*sizeof(float);
-
-    glVertexAttribPointer(
-        0,
-        3,
-        GL_FLOAT,
-        GL_FALSE,
-        stride,
-        0
-    );
-    glVertexAttribPointer(
-        1,
-        4,
-        GL_FLOAT,
-        GL_FALSE,
-        stride,
-        (void*)(position_floats*sizeof(float))
-    );
-
-    GLuint dynamic_vbo;
-    glGenBuffers(1, &dynamic_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, dynamic_vbo);
-    glBufferData(
-        GL_ARRAY_BUFFER,
-        sizeof_dynamic_vertdata,
-        dynamic_vertdata,
-        GL_DYNAMIC_DRAW
-    );
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(
-        2,
-        2,
-        GL_FLOAT,
-        GL_FALSE,
-        0,
-        0
-    );
-
-    GLuint ebo;
-    glGenBuffers(1, &ebo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(
-        GL_ELEMENT_ARRAY_BUFFER,
-        sizeof_indices,
-        indices,
-        GL_STATIC_DRAW
-    );
-
-    glBindVertexArray(0);
 
     ShaderProgram shader;
     if (!shader.init_from_files(
@@ -318,12 +323,9 @@ int main() {
     auto end_time = begin_time;
     float dt = -1.0f;
 
-    const float CAM_SPEED = 200.0f;
-    const float CAM_ZOOM_SPEED = 0.04f;
-
-    glm::vec2 camvel = glm::vec2();
-
     bool wpress = false, apress = false, spress = false, dpress = false;
+
+    int last_chunkx = 0, last_chunky = 0;
 
     bool running = true;
     while (running) {
@@ -331,6 +333,7 @@ int main() {
         while (SDL_PollEvent(&e)) {
             ImGui_ImplSDL2_ProcessEvent(&e);
             if (e.type == SDL_QUIT) running = false;
+
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 switch (e.key.keysym.sym) {
                     case SDLK_w: wpress = true; break;
@@ -342,16 +345,8 @@ int main() {
                         camera.pos = glm::vec2();
                         camera.zoom = 1.0f;
                     } break;
-                    case SDLK_p: {
-                        glBindBuffer(GL_ARRAY_BUFFER, dynamic_vbo);
-                        glBufferSubData(
-                            GL_ARRAY_BUFFER,
-                            0,
-                            sizeof(float)*8,
-                            DRY_TEXCOORDS_LOOKUP
-                        );
-                    } break;
                 }
+
             } else if (e.type == SDL_KEYUP) {
                 switch (e.key.keysym.sym) {
                     case SDLK_w: wpress = false; break;
@@ -359,6 +354,7 @@ int main() {
                     case SDLK_s: spress = false; break;
                     case SDLK_d: dpress = false; break;
                 }
+
             } else if (e.type == SDL_MOUSEBUTTONDOWN) {
                 if (e.button.button == SDL_BUTTON_LEFT) {
                     glm::vec2 mouse_ndc = glm::vec2(
@@ -370,16 +366,17 @@ int main() {
                         glm::vec4(mouse_ndc.x, mouse_ndc.y, 0.0f, 1.0f);
                     //printf("ndc: %f, %f\n", mouse_ndc.x, mouse_ndc.y);
                     printf("world: %f, %f\n", mouse_world.x, mouse_world.y);
-                    int x = mouse_world.x/size;
-                    int y = mouse_world.y/size;
-                    int idx = y*quads_in_row+x;
-                    printf("idx: %d\n", idx);
-                    quads[idx].z = 0.0f;
+                    //int x = mouse_world.x/size;
+                    //int y = mouse_world.y/size;
+                    //int idx = y*quads_in_row+x;
+                    //printf("idx: %d\n", idx);
+                    //quads[idx].z = 0.0f;
                 }
+
             } else if (e.type == SDL_MOUSEWHEEL) {
-                float subt_from_zoom = e.wheel.preciseY * CAM_ZOOM_SPEED;
-                if (camera.zoom - subt_from_zoom > 0.5f &&
-                    camera.zoom - subt_from_zoom < 3.0f) {
+                float subt_from_zoom = e.wheel.preciseY * Camera::CAM_ZOOM_SPEED;
+                if (camera.zoom - subt_from_zoom >= 0.5f &&
+                    camera.zoom - subt_from_zoom < 1.0f) {
                     camera.zoom -= subt_from_zoom;
                 }
             }
@@ -387,10 +384,30 @@ int main() {
 
         float diafactor = 1.0f;
         if ((wpress || spress) && (apress || dpress)) diafactor = 0.7f;
-        camvel.x = ((int)dpress - (int)apress) * CAM_SPEED * diafactor;
-        camvel.y = ((int)wpress - (int)spress) * CAM_SPEED * diafactor;
+        camera.vel.x = ((int)dpress - (int)apress) * Camera::CAM_SPEED * diafactor;
+        camera.vel.y = ((int)wpress - (int)spress) * Camera::CAM_SPEED * diafactor;
 
-        camera.pos += dt * camvel;
+        camera.pos += dt * camera.vel;
+
+        glm::vec2 cam_chunkf = glm::vec2(
+            camera.pos.x / (ChunkSlot::ROWS*ChunkSlot::TILE_SIZE),
+            camera.pos.y / (ChunkSlot::ROWS*ChunkSlot::TILE_SIZE)
+        );
+        int cam_chunkx = Math::smart_floor(cam_chunkf.x);
+        int cam_chunky = Math::smart_floor(cam_chunkf.y);
+
+        if (last_chunkx != cam_chunkx || last_chunky != cam_chunky) {
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 3; j++) {
+                    cslots[i*3+j].load_dynamic_quad_data((j-1)+cam_chunkx, (i-1)+cam_chunky);
+                    cslots[i*3+j].fill_dynamic_vertex_data();
+                    cslots[i*3+j].update_dynamic_buffer();
+                }
+            }
+        }
+
+        last_chunkx = cam_chunkx;
+        last_chunky = cam_chunky;
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
@@ -399,39 +416,24 @@ int main() {
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        for (int i = 0; i < num_quads; i++) {
-            auto texlookup = &TEAL_TEXCOORDS_LOOKUP;
-            if (quads[i].z > 0.5f) texlookup = &DRY_TEXCOORDS_LOOKUP;
-            memcpy(dynamic_vertdata + i*2*4, *texlookup, sizeof(float)*8);
-        }
-        glBindBuffer(GL_ARRAY_BUFFER, dynamic_vbo);
-        glBufferData(
-            GL_ARRAY_BUFFER,
-            sizeof_dynamic_vertdata,
-            NULL,
-            GL_DYNAMIC_DRAW
-        );
-        glBufferData(
-            GL_ARRAY_BUFFER,
-            sizeof_dynamic_vertdata,
-            dynamic_vertdata,
-            GL_DYNAMIC_DRAW
-        );
-
         camera.set_proj();
         camera.set_view();
         ImGui::Text("fps: %f", 1.0f/dt);
         ImGui::Text("dt: %f", dt);
         ImGui::Text("cam_pos: (%f, %f)", camera.pos.x, camera.pos.y);
-        ImGui::Text("cam_vel: (%f, %f)", camvel.x, camvel.y);
+        ImGui::Text("cam_vel: (%f, %f)", camera.vel.x, camera.vel.y);
         ImGui::Text("cam_zoom: %f", camera.zoom);
+        ImGui::Text("cam_chunkf: (%f, %f)", cam_chunkf.x, cam_chunkf.y);
+        ImGui::Text("cam_chunk: (%d, %d)", cam_chunkx, cam_chunky);
 
         shader.use();
         shader.upload_mat4("proj", camera.proj);
         shader.upload_mat4("view", camera.view);
-        glBindVertexArray(vao);
-        for (int i = 0; i < 3; i++)
-            glDrawElements(GL_TRIANGLES, num_quads * 6, GL_UNSIGNED_INT, 0);
+
+        for (int i = 0; i < CHUNKS; i++) {
+            shader.upload_int2("chunk", cslots[i].chunkx, cslots[i].chunky);
+            cslots[i].render();
+        }
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

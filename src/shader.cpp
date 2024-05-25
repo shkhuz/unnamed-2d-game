@@ -21,6 +21,7 @@ public:
     bool lateinit();
     void use();
     void upload_mat4(const char* var, glm::mat4 mat4);
+    void upload_int2(const char* var, int i0, int i1);
 };
 
 static const char* shader_kind_to_string(GLenum kind) {
@@ -127,4 +128,9 @@ void ShaderProgram::use() {
 void ShaderProgram::upload_mat4(const char* var, glm::mat4 mat4) {
     GLuint varloc = glGetUniformLocation(id, var);
     glUniformMatrix4fv(varloc, 1, GL_FALSE, glm::value_ptr(mat4));
+}
+
+void ShaderProgram::upload_int2(const char* var, int i0, int i1) {
+    GLuint varloc = glGetUniformLocation(id, var);
+    glUniform2i(varloc, i0, i1);
 }
