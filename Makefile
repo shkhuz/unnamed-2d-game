@@ -15,6 +15,8 @@ INCLUDES := -I/usr/include/SDL2 -Ithirdparty
 LIBS := -lSDL2 -lSDL2_image -lGLEW -lGL -lglm
 FLAGS := -g -Wall -Wextra
 
+CC := g++
+
 run: $(OBJS) build/a.out
 	./build/a.out
 
@@ -22,11 +24,11 @@ debug: $(OBJS) build/a.out
 	gdb ./build/a.out
 
 build/a.out: $(OBJS)
-	clang++ -o build/a.out $(FLAGS) $(OBJS) $(LIBS)
+	$(CC) -o build/a.out $(FLAGS) $(OBJS) $(LIBS)
 
 build/obj/%.cpp.o: %.cpp
 	@mkdir -p $(dir $@)
-	clang++ -c $^ $(FLAGS) -o $@ $(INCLUDES)
+	$(CC) -c $^ $(FLAGS) -o $@ $(INCLUDES)
 
 clean:
 	rm -rf build/

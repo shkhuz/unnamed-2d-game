@@ -19,6 +19,12 @@ typedef uint32_t u32;
 typedef uint64_t u64;
 typedef size_t usize;
 
+typedef int8_t i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+typedef ssize_t isize;
+
 #include "io.cpp"
 #include "shader.cpp"
 #include "camera.cpp"
@@ -27,13 +33,13 @@ typedef size_t usize;
 //int HEIGHT = 360;
 //int FLAGS = SDL_WINDOW_OPENGL;
 
-//int WIDTH = 1280;
-//int HEIGHT = 720;
-//int FLAGS = SDL_WINDOW_OPENGL;
+int WIDTH = 1280;
+int HEIGHT = 720;
+int FLAGS = SDL_WINDOW_OPENGL;
 
-int WIDTH = 1920;
-int HEIGHT = 1080;
-int FLAGS = SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN;
+//int WIDTH = 1920;
+//int HEIGHT = 1080;
+//int FLAGS = SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN;
 
 class Random {
 public:
@@ -62,6 +68,49 @@ public:
 constexpr int ROWS = 32;
 constexpr float TILE_SIZE = 16.0f;
 
+class Chunk {
+public:
+    u16 data[ROWS*ROWS];
+};
+
+const int CHUNK_ROWS = 1;
+Chunk chunks[CHUNK_ROWS * CHUNK_ROWS] = {
+    { .data = {
+        1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    }},
+};
+
 class ChunkCommonData {
 public:
     static const int POSITION_ATTR_LEN = 2;
@@ -83,14 +132,19 @@ public:
         glm::vec2(0.0f,      0.0f),
     };
 
-    static constexpr float TEAL_TEXCOORDS_LOOKUP[] = {
+    static constexpr float EMPTY_TEXCOORDS_LOOKUP[8] = {
+        0.0f, 0.0f,
+        0.0f, 0.0f,
+        0.0f, 0.0f,
+        0.0f, 0.0f,
+    };
+
+    static constexpr float TEXCOORDS_LOOKUP[8 * 2] = {
         0.0f, 0.0f,
         0.5f, 0.0f,
         0.5f, 1.0f,
         0.0f, 1.0f,
-    };
 
-    static constexpr float DRY_TEXCOORDS_LOOKUP[] = {
         0.5f, 0.0f,
         1.0f, 0.0f,
         1.0f, 1.0f,
@@ -202,10 +256,22 @@ public:
 
 ChunkCommonData* ccom = NULL;
 
+i16 get_tileinfo(glm::ivec2 chunk, glm::ivec2 relchunk) {
+    if (chunk.x >= 0 && chunk.x < CHUNK_ROWS && chunk.y >= 0 && chunk.y < CHUNK_ROWS) {
+        return chunks[chunk.y*CHUNK_ROWS+chunk.x].data[relchunk.y*ROWS+relchunk.x];
+    } else return -1;
+}
+
+void set_tileinfo(glm::ivec2 chunk, glm::ivec2 relchunk, i16 val) {
+    if (chunk.x >= 0 && chunk.x < CHUNK_ROWS && chunk.y >= 0 && chunk.y < CHUNK_ROWS) {
+        chunks[chunk.y*CHUNK_ROWS+chunk.x].data[relchunk.y*ROWS+relchunk.x] = val;
+    }
+}
+
 class ChunkSlot {
 public:
     float* dynamic_vertex_data;
-    float* dynamic_quad_data;
+    i16* dynamic_quad_data;
 
     glm::ivec2 pos;
     GLuint vao, dynamic_vbo;
@@ -214,28 +280,31 @@ public:
         dynamic_vertex_data = (float*)Mem::alloc(
             sizeof(float) * ChunkCommonData::DYNAMIC_VERTEX_DATA_LEN
         );
-        dynamic_quad_data = (float*)Mem::alloc(sizeof(float) * ROWS * ROWS);
+        dynamic_quad_data = (i16*)Mem::alloc(sizeof(i16) * ROWS * ROWS);
     }
 
     void load_dynamic_quad_data(glm::ivec2 pos) {
         this->pos = pos;
         for (int i = 0; i < ROWS; i++) {
             for (int j = 0; j < ROWS; j++) {
-                dynamic_quad_data[j*ROWS+i] = Random::real();
+                dynamic_quad_data[j*ROWS+i] = get_tileinfo(pos, glm::ivec2(i, j));
             }
         }
     }
 
     void fill_dynamic_vertex_data() {
         for (int q = 0; q < ROWS*ROWS; q++) {
-            auto tile = &ChunkCommonData::TEAL_TEXCOORDS_LOOKUP;
-            if (dynamic_quad_data[q] > 0.5f)
-                tile = &ChunkCommonData::DRY_TEXCOORDS_LOOKUP;
+            const float* tile = NULL;
+            if (dynamic_quad_data[q] == -1)
+                tile = ChunkCommonData::EMPTY_TEXCOORDS_LOOKUP;
+            else
+                tile = &ChunkCommonData::TEXCOORDS_LOOKUP[dynamic_quad_data[q] * 8];
+
             for (int v = 0; v < 4; v++) {
                 int offset = q*4*ChunkCommonData::DYNAMIC_ATTR_LEN +
                     v*ChunkCommonData::DYNAMIC_ATTR_LEN;
-                dynamic_vertex_data[offset]   = (*tile)[v*2];
-                dynamic_vertex_data[offset+1] = (*tile)[v*2+1];
+                dynamic_vertex_data[offset]   = tile[v*2];
+                dynamic_vertex_data[offset+1] = tile[v*2+1];
             }
         }
     }
@@ -329,13 +398,6 @@ glm::vec2 world_pos_to_relchunk_pos(glm::vec2 world_pos, glm::ivec2 chunk) {
 
 const int CHUNKS = 9;
 ChunkSlot cslots[CHUNKS];
-
-ChunkSlot* get_chunk(glm::ivec2 chunk) {
-    for (int i = 0; i < 9; i++) {
-        if (cslots[i].pos == chunk) return &cslots[i];
-    }
-    return NULL;
-}
 
 int main() {
     srand(time(NULL));
@@ -472,9 +534,8 @@ int main() {
                     glm::vec2 mouse_world =
                         glm::inverse(camera.proj * camera.view) *
                         glm::vec4(mouse_ndc.x, mouse_ndc.y, 0.0f, 1.0f);
-                    //printf("ndc: %f, %f\n", mouse_ndc.x, mouse_ndc.y);
                     glm::ivec2 mouse_chunk = world_pos_to_chunk(mouse_world);
-                    ChunkSlot* cslot = get_chunk(mouse_chunk);
+
                     glm::vec2 tilepos_relchunk =
                         world_pos_to_relchunk_pos(mouse_world, mouse_chunk);
                     glm::ivec2 tilexy = glm::ivec2(
@@ -483,21 +544,24 @@ int main() {
                     );
                     int idx = tilexy.y*ROWS+tilexy.x;
                     printf(
-                        "chunk: %d, %d  idx: %d  tile: %f\n",
+                        "chunk: %d, %d  idx: %d\n",
                         mouse_chunk.x,
                         mouse_chunk.y,
-                        idx,
-                        cslot->dynamic_quad_data[idx]
+                        idx
                     );
-                    cslot->dynamic_quad_data[idx] = 0.0f;
+                    set_tileinfo(
+                        mouse_chunk,
+                        tilexy,
+                        !get_tileinfo(mouse_chunk, tilexy)
+                    );
                 }
 
             } else if (e.type == SDL_MOUSEWHEEL) {
                 float subt_from_zoom = e.wheel.preciseY * Camera::CAM_ZOOM_SPEED;
-                if (camera.zoom - subt_from_zoom >= 0.5f &&
-                    camera.zoom - subt_from_zoom < 1.0f) {
+                //if (camera.zoom - subt_from_zoom >= 0.5f &&
+                //    camera.zoom - subt_from_zoom < 1.0f) {
                     camera.zoom -= subt_from_zoom;
-                }
+                //}
             }
         }
 
@@ -510,7 +574,7 @@ int main() {
 
         cam_chunk = world_pos_to_chunk(camera.pos);
 
-        if (last_cam_chunk.x != cam_chunk.x || last_cam_chunk.y != cam_chunk.y) {
+        //if (last_cam_chunk.x != cam_chunk.x || last_cam_chunk.y != cam_chunk.y) {
             for (int i = 0; i < 3; i++) {
                 for (int j = 0; j < 3; j++) {
                     cslots[i*3+j].load_dynamic_quad_data(
@@ -518,7 +582,7 @@ int main() {
                     );
                 }
             }
-        }
+        //}
         for (int i = 0; i < 9; i++) {
             cslots[i].fill_dynamic_vertex_data();
             cslots[i].update_dynamic_buffer();
