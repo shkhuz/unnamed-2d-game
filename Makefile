@@ -18,15 +18,18 @@ FLAGS := -g -Wall -Wextra
 run: $(OBJS) build/a.out
 	./build/a.out
 
+debug: $(OBJS) build/a.out
+	gdb ./build/a.out
+
 build/a.out: $(OBJS)
-	g++ -o build/a.out $(FLAGS) $(OBJS) $(LIBS)
+	clang++ -o build/a.out $(FLAGS) $(OBJS) $(LIBS)
 
 build/obj/%.cpp.o: %.cpp
 	@mkdir -p $(dir $@)
-	g++ -c $^ $(FLAGS) -o $@ $(INCLUDES)
+	clang++ -c $^ $(FLAGS) -o $@ $(INCLUDES)
 
 clean:
 	rm -rf build/
 
-.PHONY: clean
+.PHONY: clean run debug
 
