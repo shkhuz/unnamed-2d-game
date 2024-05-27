@@ -67,13 +67,15 @@ public:
 
 constexpr int ROWS = 32;
 constexpr float TILE_SIZE = 16.0f;
+constexpr int TEXROWS = 4;
+constexpr int CHUNK_ROWS = 1;
+constexpr int TEX_TILE_SIZE = 256;
 
 class Chunk {
 public:
-    u16 data[ROWS*ROWS];
+    i16 data[ROWS*ROWS];
 };
 
-const int CHUNK_ROWS = 1;
 Chunk chunks[CHUNK_ROWS * CHUNK_ROWS] = {
     { .data = {
         1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -111,6 +113,13 @@ Chunk chunks[CHUNK_ROWS * CHUNK_ROWS] = {
     }},
 };
 
+Chunk* get_chunk(glm::ivec2 pos) {
+    if (pos.x >= 0 && pos.x < CHUNK_ROWS &&
+        pos.y >= 0 && pos.y < CHUNK_ROWS) {
+        return &chunks[pos.y*CHUNK_ROWS+pos.x];
+    } else return NULL;
+}
+
 class ChunkCommonData {
 public:
     static const int POSITION_ATTR_LEN = 2;
@@ -139,17 +148,7 @@ public:
         0.0f, 0.0f,
     };
 
-    static constexpr float TEXCOORDS_LOOKUP[8 * 2] = {
-        0.0f, 0.0f,
-        0.5f, 0.0f,
-        0.5f, 1.0f,
-        0.0f, 1.0f,
-
-        0.5f, 0.0f,
-        1.0f, 0.0f,
-        1.0f, 1.0f,
-        0.5f, 1.0f,
-    };
+    inline static float TEXCOORDS_LOOKUP[TEXROWS*TEXROWS * 8];
 
     float  static_vertex_data[STATIC_VERTEX_DATA_LEN];
     int indices_data[INDICES_DATA_LEN];
@@ -167,6 +166,31 @@ public:
                     i*TILE_SIZE,
                     j*TILE_SIZE
                 );
+            }
+        }
+    }
+
+    void init_texcoords(float atlas_width, float atlas_height) {
+        for (int y = 0; y < TEXROWS; y++) {
+            for (int x = 0; x < TEXROWS; x++) {
+                int offset = (y*TEXROWS+x)*8;
+
+                glm::vec2 top_left =  glm::vec2((x+0)*TEX_TILE_SIZE+0.5f, (y+0)*TEX_TILE_SIZE+0.5f);
+                glm::vec2 top_right = glm::vec2((x+1)*TEX_TILE_SIZE-0.5f, (y+0)*TEX_TILE_SIZE+0.5f);
+                glm::vec2 bot_right = glm::vec2((x+1)*TEX_TILE_SIZE-0.5f, (y+1)*TEX_TILE_SIZE-0.5f);
+                glm::vec2 bot_left =  glm::vec2((x+0)*TEX_TILE_SIZE+0.5f, (y+1)*TEX_TILE_SIZE-0.5f);
+
+                TEXCOORDS_LOOKUP[offset+0] = bot_left.x / atlas_width;
+                TEXCOORDS_LOOKUP[offset+1] = bot_left.y / atlas_width;
+
+                TEXCOORDS_LOOKUP[offset+2] = bot_right.x / atlas_width;
+                TEXCOORDS_LOOKUP[offset+3] = bot_right.y / atlas_width;
+
+                TEXCOORDS_LOOKUP[offset+4] = top_right.x / atlas_width;
+                TEXCOORDS_LOOKUP[offset+5] = top_right.y / atlas_width;
+
+                TEXCOORDS_LOOKUP[offset+6] = top_left.x / atlas_width;
+                TEXCOORDS_LOOKUP[offset+7] = top_left.y / atlas_width;
             }
         }
     }
@@ -256,22 +280,21 @@ public:
 
 ChunkCommonData* ccom = NULL;
 
-i16 get_tileinfo(glm::ivec2 chunk, glm::ivec2 relchunk) {
-    if (chunk.x >= 0 && chunk.x < CHUNK_ROWS && chunk.y >= 0 && chunk.y < CHUNK_ROWS) {
-        return chunks[chunk.y*CHUNK_ROWS+chunk.x].data[relchunk.y*ROWS+relchunk.x];
-    } else return -1;
+i16 get_tileinfo(glm::ivec2 pos, glm::ivec2 relchunk) {
+    Chunk* chunk = get_chunk(pos);
+    if (chunk) return chunk->data[relchunk.y*ROWS+relchunk.x];
+    else return -1;
 }
 
-void set_tileinfo(glm::ivec2 chunk, glm::ivec2 relchunk, i16 val) {
-    if (chunk.x >= 0 && chunk.x < CHUNK_ROWS && chunk.y >= 0 && chunk.y < CHUNK_ROWS) {
-        chunks[chunk.y*CHUNK_ROWS+chunk.x].data[relchunk.y*ROWS+relchunk.x] = val;
-    }
+void set_tileinfo(glm::ivec2 pos, glm::ivec2 relchunk, i16 val) {
+    Chunk* chunk = get_chunk(pos);
+    if (chunk) chunk->data[relchunk.y*ROWS+relchunk.x] = val;
 }
 
 class ChunkSlot {
 public:
     float* dynamic_vertex_data;
-    i16* dynamic_quad_data;
+    Chunk* current;
 
     glm::ivec2 pos;
     GLuint vao, dynamic_vbo;
@@ -280,31 +303,33 @@ public:
         dynamic_vertex_data = (float*)Mem::alloc(
             sizeof(float) * ChunkCommonData::DYNAMIC_VERTEX_DATA_LEN
         );
-        dynamic_quad_data = (i16*)Mem::alloc(sizeof(i16) * ROWS * ROWS);
     }
 
-    void load_dynamic_quad_data(glm::ivec2 pos) {
+    void set_current_chunk(glm::ivec2 pos) {
         this->pos = pos;
-        for (int i = 0; i < ROWS; i++) {
-            for (int j = 0; j < ROWS; j++) {
-                dynamic_quad_data[j*ROWS+i] = get_tileinfo(pos, glm::ivec2(i, j));
-            }
-        }
+        this->current = get_chunk(pos);
     }
 
     void fill_dynamic_vertex_data() {
-        for (int q = 0; q < ROWS*ROWS; q++) {
-            const float* tile = NULL;
-            if (dynamic_quad_data[q] == -1)
-                tile = ChunkCommonData::EMPTY_TEXCOORDS_LOOKUP;
-            else
-                tile = &ChunkCommonData::TEXCOORDS_LOOKUP[dynamic_quad_data[q] * 8];
+        if (current) {
+            for (int q = 0; q < ROWS*ROWS; q++) {
+                i16 val = current->data[q];
+                const float* tile = NULL;
+                if (val == -1)
+                    tile = ChunkCommonData::EMPTY_TEXCOORDS_LOOKUP;
+                else
+                    tile = &ChunkCommonData::TEXCOORDS_LOOKUP[val * 8];
 
-            for (int v = 0; v < 4; v++) {
-                int offset = q*4*ChunkCommonData::DYNAMIC_ATTR_LEN +
-                    v*ChunkCommonData::DYNAMIC_ATTR_LEN;
-                dynamic_vertex_data[offset]   = tile[v*2];
-                dynamic_vertex_data[offset+1] = tile[v*2+1];
+                for (int v = 0; v < 4; v++) {
+                    int offset = q*4*ChunkCommonData::DYNAMIC_ATTR_LEN +
+                        v*ChunkCommonData::DYNAMIC_ATTR_LEN;
+                    dynamic_vertex_data[offset]   = tile[v*2];
+                    dynamic_vertex_data[offset+1] = tile[v*2+1];
+                }
+            }
+        } else {
+            for (int i = 0; i < ROWS*ROWS*4*2; i++) {
+                dynamic_vertex_data[i] = 0.0f;
             }
         }
     }
@@ -429,8 +454,8 @@ int main() {
     ImGui_ImplSDL2_InitForOpenGL(window, glctx);
     ImGui_ImplOpenGL3_Init();
 
-    SDL_Surface* png = IMG_Load("res/atlas.jpg");
-    if (!png) {
+    SDL_Surface* atlas = IMG_Load("res/atlas.jpg");
+    if (!atlas) {
         fprintf(stderr, "Unable to load img: %s\n", IMG_GetError());
         return 1;
     }
@@ -440,6 +465,7 @@ int main() {
     Camera camera;
 
     ccom->init_static_quad_data();
+    ccom->init_texcoords((float)atlas->w, (float)atlas->h);
     ccom->fill_static_vertex_data();
     ccom->fill_indices_data();
     ccom->init_render_buffers();
@@ -447,7 +473,7 @@ int main() {
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
             cslots[i*3+j].allocate_client_buffers();
-            cslots[i*3+j].load_dynamic_quad_data(glm::ivec2(j-1, i-1));
+            cslots[i*3+j].set_current_chunk(glm::ivec2(j-1, i-1));
             cslots[i*3+j].fill_dynamic_vertex_data();
             cslots[i*3+j].update_dynamic_buffer();
             cslots[i*3+j].init_render_buffers();
@@ -471,30 +497,32 @@ int main() {
     glBindTexture(GL_TEXTURE_2D, tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexImage2D(
         GL_TEXTURE_2D,
         0,
         GL_RGB,
-        png->w,
-        png->h,
+        atlas->w,
+        atlas->h,
         0,
         GL_RGB,
         GL_UNSIGNED_BYTE,
-        png->pixels
+        atlas->pixels
     );
-    SDL_FreeSurface(png);
+    SDL_FreeSurface(atlas);
 
     auto begin_time = std::chrono::high_resolution_clock::now();
     auto end_time = begin_time;
     float dt = -1.0f;
 
-    bool wpress = false, apress = false, spress = false, dpress = false;
+    bool wpress = false, apress = false, spress = false, dpress = false, lshiftpress = false;
+    bool mouse_down = false;
 
     glm::ivec2 cam_chunk = glm::ivec2();
     glm::ivec2 last_cam_chunk = glm::ivec2();
+
+    int tile_to_place = 0;
 
     printf("allocated %lu KB\n", Mem::allocated/1000);
     bool running = true;
@@ -510,7 +538,14 @@ int main() {
                     case SDLK_a: apress = true; break;
                     case SDLK_s: spress = true; break;
                     case SDLK_d: dpress = true; break;
+                    case SDLK_LSHIFT: lshiftpress = true; break;
                     case SDLK_ESCAPE: running = false; break;
+
+                    case SDLK_1: tile_to_place = 0; break;
+                    case SDLK_2: tile_to_place = 1; break;
+                    case SDLK_3: tile_to_place = 2; break;
+                    case SDLK_4: tile_to_place = 3; break;
+
                     case SDLK_q: {
                         camera.pos = glm::vec2();
                         camera.zoom = 1.0f;
@@ -523,39 +558,18 @@ int main() {
                     case SDLK_a: apress = false; break;
                     case SDLK_s: spress = false; break;
                     case SDLK_d: dpress = false; break;
+                    case SDLK_LSHIFT: lshiftpress = false; break;
                 }
 
             } else if (e.type == SDL_MOUSEBUTTONDOWN) {
                 if (e.button.button == SDL_BUTTON_LEFT) {
-                    glm::vec2 mouse_ndc = glm::vec2(
-                         (float)(e.button.x - WIDTH/2) / (float)WIDTH * 2,
-                        -(float)(e.button.y - HEIGHT/2) / (float)HEIGHT * 2
-                    );
-                    glm::vec2 mouse_world =
-                        glm::inverse(camera.proj * camera.view) *
-                        glm::vec4(mouse_ndc.x, mouse_ndc.y, 0.0f, 1.0f);
-                    glm::ivec2 mouse_chunk = world_pos_to_chunk(mouse_world);
-
-                    glm::vec2 tilepos_relchunk =
-                        world_pos_to_relchunk_pos(mouse_world, mouse_chunk);
-                    glm::ivec2 tilexy = glm::ivec2(
-                        tilepos_relchunk.x / TILE_SIZE,
-                        tilepos_relchunk.y / TILE_SIZE
-                    );
-                    int idx = tilexy.y*ROWS+tilexy.x;
-                    printf(
-                        "chunk: %d, %d  idx: %d\n",
-                        mouse_chunk.x,
-                        mouse_chunk.y,
-                        idx
-                    );
-                    set_tileinfo(
-                        mouse_chunk,
-                        tilexy,
-                        !get_tileinfo(mouse_chunk, tilexy)
-                    );
+                    mouse_down = true;
                 }
 
+            } else if (e.type == SDL_MOUSEBUTTONUP) {
+                if (e.button.button = SDL_BUTTON_LEFT) {
+                    mouse_down = false;
+                }
             } else if (e.type == SDL_MOUSEWHEEL) {
                 float subt_from_zoom = e.wheel.preciseY * Camera::CAM_ZOOM_SPEED;
                 //if (camera.zoom - subt_from_zoom >= 0.5f &&
@@ -565,24 +579,58 @@ int main() {
             }
         }
 
+        if (mouse_down) {
+            int x, y;
+            SDL_GetMouseState(&x, &y);
+            glm::vec2 mouse_ndc = glm::vec2(
+                 (float)(x - WIDTH/2) / (float)WIDTH * 2,
+                -(float)(y - HEIGHT/2) / (float)HEIGHT * 2
+            );
+            glm::vec2 mouse_world =
+                glm::inverse(camera.proj * camera.view) *
+                glm::vec4(mouse_ndc.x, mouse_ndc.y, 0.0f, 1.0f);
+            glm::ivec2 mouse_chunk = world_pos_to_chunk(mouse_world);
+
+            glm::vec2 tilepos_relchunk =
+                world_pos_to_relchunk_pos(mouse_world, mouse_chunk);
+            glm::ivec2 tilexy = glm::ivec2(
+                tilepos_relchunk.x / TILE_SIZE,
+                tilepos_relchunk.y / TILE_SIZE
+            );
+            int idx = tilexy.y*ROWS+tilexy.x;
+            set_tileinfo(
+                mouse_chunk,
+                tilexy,
+                tile_to_place
+            );
+            printf(
+                "chunk: %d, %d  idx: %d\n",
+                mouse_chunk.x,
+                mouse_chunk.y,
+                idx
+            );
+        }
+
         float diafactor = 1.0f;
         if ((wpress || spress) && (apress || dpress)) diafactor = 0.7f;
-        camera.vel.x = ((int)dpress - (int)apress) * Camera::CAM_SPEED * diafactor;
-        camera.vel.y = ((int)wpress - (int)spress) * Camera::CAM_SPEED * diafactor;
+        float cam_speed_multiplier = 1.0f;
+        if (lshiftpress) cam_speed_multiplier = 4.0f;
+        camera.vel.x = ((int)dpress-(int)apress) * Camera::CAM_SPEED * cam_speed_multiplier * diafactor;
+        camera.vel.y = ((int)wpress-(int)spress) * Camera::CAM_SPEED * cam_speed_multiplier * diafactor;
 
         camera.pos += dt * camera.vel;
 
         cam_chunk = world_pos_to_chunk(camera.pos);
 
-        //if (last_cam_chunk.x != cam_chunk.x || last_cam_chunk.y != cam_chunk.y) {
+        if (last_cam_chunk.x != cam_chunk.x || last_cam_chunk.y != cam_chunk.y) {
             for (int i = 0; i < 3; i++) {
                 for (int j = 0; j < 3; j++) {
-                    cslots[i*3+j].load_dynamic_quad_data(
+                    cslots[i*3+j].set_current_chunk(
                         glm::ivec2((j-1)+cam_chunk.x, (i-1)+cam_chunk.y)
                     );
                 }
             }
-        //}
+        }
         for (int i = 0; i < 9; i++) {
             cslots[i].fill_dynamic_vertex_data();
             cslots[i].update_dynamic_buffer();
