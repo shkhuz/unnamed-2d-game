@@ -12,6 +12,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <chrono>
+#include <vector>
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -60,6 +61,7 @@ class Mem {
 public:
     inline static usize allocated;
     static void* alloc(usize bytes) {
+        printf("Mem::alloc(): allocating %lu bytes\n", bytes);
         allocated += bytes;
         return malloc(bytes);
     }
@@ -67,11 +69,81 @@ public:
 
 constexpr int ROWS = 32;
 constexpr float TILE_SIZE = 16.0f;
-constexpr int TEXROWS = 4;
 constexpr int CHUNK_ROWS = 1;
-constexpr int TEX_TILE_SIZE = 256;
 
 class ChunkSlot;
+
+class TextureAtlas {
+public:
+    float* uv_lookup;
+    int rows, width_px, tile_width_px;
+    SDL_Surface* handle;
+
+    bool load_from_file(const char* path, int rows) {
+        this->rows = rows;
+
+        SDL_Surface* img = IMG_Load(path);
+        if (!img) {
+            fprintf(stderr, "Unable to load texture atlas: %s\n", IMG_GetError());
+            return false;
+        }
+
+        this->width_px = img->w;
+        this->tile_width_px = width_px / rows;
+        this->handle = img;
+
+        uv_lookup = (float*)Mem::alloc(rows*rows * 8 * sizeof(float));
+        for (int y = 0; y < rows; y++) {
+            for (int x = 0; x < rows; x++) {
+                int offset = (y*rows+x) * 8;
+
+                glm::vec2 top_left =  glm::vec2((x+0)*tile_width_px+0.5f, (y+0)*tile_width_px+0.5f);
+                glm::vec2 top_right = glm::vec2((x+1)*tile_width_px-0.5f, (y+0)*tile_width_px+0.5f);
+                glm::vec2 bot_right = glm::vec2((x+1)*tile_width_px-0.5f, (y+1)*tile_width_px-0.5f);
+                glm::vec2 bot_left =  glm::vec2((x+0)*tile_width_px+0.5f, (y+1)*tile_width_px-0.5f);
+
+                uv_lookup[offset+0] = bot_left.x / width_px;
+                uv_lookup[offset+1] = bot_left.y / width_px;
+
+                uv_lookup[offset+2] = bot_right.x / width_px;
+                uv_lookup[offset+3] = bot_right.y / width_px;
+
+                uv_lookup[offset+4] = top_right.x / width_px;
+                uv_lookup[offset+5] = top_right.y / width_px;
+
+                uv_lookup[offset+6] = top_left.x / width_px;
+                uv_lookup[offset+7] = top_left.y / width_px;
+            }
+        }
+        return true;
+    }
+
+    void init_for_render() {
+        GLuint tex;
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGBA,
+            width_px,
+            width_px,
+            0,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            handle->pixels
+        );
+        SDL_FreeSurface(handle);
+    }
+
+    float* get_uvcoords_for_tileidx(i16 idx) {
+        return &uv_lookup[idx*8];
+    }
+};
 
 class Chunk {
 public:
@@ -151,16 +223,14 @@ public:
         0.0f, 0.0f,
     };
 
-    inline static float TEXCOORDS_LOOKUP[TEXROWS*TEXROWS * 8];
-
+    glm::vec2 static_quad_data[ROWS * ROWS];
     float  static_vertex_data[STATIC_VERTEX_DATA_LEN];
     int indices_data[INDICES_DATA_LEN];
     GLuint static_vbo, ibo;
-    GLuint line_vao, line_vbo;
 
-    glm::vec2 static_quad_data[ROWS * ROWS];
 
     float line_vertex_data[6 * 2];
+    GLuint line_vao, line_vbo;
 
     void init_static_quad_data() {
         for (int i = 0; i < ROWS; i++) {
@@ -169,31 +239,6 @@ public:
                     i*TILE_SIZE,
                     j*TILE_SIZE
                 );
-            }
-        }
-    }
-
-    void init_texcoords(float atlas_dim) {
-        for (int y = 0; y < TEXROWS; y++) {
-            for (int x = 0; x < TEXROWS; x++) {
-                int offset = (y*TEXROWS+x)*8;
-
-                glm::vec2 top_left =  glm::vec2((x+0)*TEX_TILE_SIZE+0.5f, (y+0)*TEX_TILE_SIZE+0.5f);
-                glm::vec2 top_right = glm::vec2((x+1)*TEX_TILE_SIZE-0.5f, (y+0)*TEX_TILE_SIZE+0.5f);
-                glm::vec2 bot_right = glm::vec2((x+1)*TEX_TILE_SIZE-0.5f, (y+1)*TEX_TILE_SIZE-0.5f);
-                glm::vec2 bot_left =  glm::vec2((x+0)*TEX_TILE_SIZE+0.5f, (y+1)*TEX_TILE_SIZE-0.5f);
-
-                TEXCOORDS_LOOKUP[offset+0] = bot_left.x / atlas_dim;
-                TEXCOORDS_LOOKUP[offset+1] = bot_left.y / atlas_dim;
-
-                TEXCOORDS_LOOKUP[offset+2] = bot_right.x / atlas_dim;
-                TEXCOORDS_LOOKUP[offset+3] = bot_right.y / atlas_dim;
-
-                TEXCOORDS_LOOKUP[offset+4] = top_right.x / atlas_dim;
-                TEXCOORDS_LOOKUP[offset+5] = top_right.y / atlas_dim;
-
-                TEXCOORDS_LOOKUP[offset+6] = top_left.x / atlas_dim;
-                TEXCOORDS_LOOKUP[offset+7] = top_left.y / atlas_dim;
             }
         }
     }
@@ -282,6 +327,7 @@ public:
 };
 
 ChunkCommonData* ccom = NULL;
+TextureAtlas texatlas;
 
 class ChunkSlot {
 public:
@@ -298,7 +344,6 @@ public:
     }
 
     void set_current_chunk(glm::ivec2 pos) {
-        printf("setting chunk\n");
         this->pos = pos;
         this->current = get_chunk(pos);
         if (this->current) this->current->slot = this;
@@ -308,18 +353,13 @@ public:
         if (current) {
             for (int q = 0; q < ROWS*ROWS; q++) {
                 i16 val = current->data[q];
-                const float* tile = NULL;
-                if (val == -1)
-                    tile = ChunkCommonData::EMPTY_TEXCOORDS_LOOKUP;
-                else
-                    tile = &ChunkCommonData::TEXCOORDS_LOOKUP[val * 8];
 
-                for (int v = 0; v < 4; v++) {
-                    int offset = q*4*ChunkCommonData::DYNAMIC_ATTR_LEN +
-                        v*ChunkCommonData::DYNAMIC_ATTR_LEN;
-                    dynamic_vertex_data[offset]   = tile[v*2];
-                    dynamic_vertex_data[offset+1] = tile[v*2+1];
-                }
+                const float* uvcoords = NULL;
+                if (val == -1) uvcoords = ChunkCommonData::EMPTY_TEXCOORDS_LOOKUP;
+                else uvcoords = texatlas.get_uvcoords_for_tileidx(val);
+
+                int offset = q*4*ChunkCommonData::DYNAMIC_ATTR_LEN;
+                memcpy(&dynamic_vertex_data[offset], uvcoords, 8*sizeof(float));
             }
         } else {
             for (int i = 0; i < ROWS*ROWS*4*2; i++) {
@@ -395,6 +435,130 @@ public:
     }
 };
 
+class Sprite {
+public:
+    glm::vec2 pos;
+    glm::vec2 size;
+    i16 texture_idx;
+};
+
+class SpriteBatch {
+public:
+    std::vector<Sprite*> sprites;
+
+    std::vector<float> vertex_data;
+    std::vector<int> indices_data;
+
+    GLuint vao, vbo, ibo;
+
+    void fill_vertex_data() {
+        vertex_data.clear();
+        vertex_data.reserve(1000 * 4 * (2+4+2));
+
+        for (usize i = 0; i < sprites.size(); i++) {
+            Sprite s = *sprites[i];
+            glm::vec2 pos_lookup[4] = {
+                glm::vec2(s.pos.x,          s.pos.y+s.size.y),
+                glm::vec2(s.pos.x+s.size.x, s.pos.y+s.size.y),
+                glm::vec2(s.pos.x+s.size.x, s.pos.y),
+                s.pos
+            };
+            float* uv_lookup = texatlas.get_uvcoords_for_tileidx(s.texture_idx);
+
+            for (int v = 0; v < 4; v++) {
+                vertex_data.push_back(pos_lookup[v].x);
+                vertex_data.push_back(pos_lookup[v].y);
+
+                vertex_data.push_back(1.0f);
+                vertex_data.push_back(1.0f);
+                vertex_data.push_back(1.0f);
+                vertex_data.push_back(1.0f);
+
+                vertex_data.push_back(uv_lookup[v*2]);
+                vertex_data.push_back(uv_lookup[v*2+1]);
+            }
+        }
+    }
+
+    void fill_indices_data() {
+        indices_data.clear();
+        indices_data.reserve(1000 * 6);
+
+        for (usize i = 0; i < sprites.size(); i++) {
+            indices_data.push_back(3 + i*4);
+            indices_data.push_back(2 + i*4);
+            indices_data.push_back(1 + i*4);
+
+            indices_data.push_back(1 + i*4);
+            indices_data.push_back(0 + i*4);
+            indices_data.push_back(3 + i*4);
+        }
+    }
+
+    void update_render_buffers() {
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(
+            GL_ARRAY_BUFFER,
+            vertex_data.size() * sizeof(float),
+            vertex_data.data(),
+            GL_DYNAMIC_DRAW
+        );
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+        glBufferData(
+            GL_ELEMENT_ARRAY_BUFFER,
+            indices_data.size() * sizeof(int),
+            indices_data.data(),
+            GL_DYNAMIC_DRAW
+        );
+    }
+
+    void init_render_buffers() {
+        glGenVertexArrays(1, &vao);
+        glBindVertexArray(vao);
+
+        glGenBuffers(1, &vbo);
+        glGenBuffers(1, &ibo);
+        update_render_buffers();
+
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+        glEnableVertexAttribArray(2);
+
+        int stride = (2+4+2) * sizeof(float);
+        glVertexAttribPointer(
+            0,
+            2,
+            GL_FLOAT,
+            GL_FALSE,
+            stride,
+            0
+        );
+        glVertexAttribPointer(
+            1,
+            4,
+            GL_FLOAT,
+            GL_FALSE,
+            stride,
+            (void*)((2) * sizeof(float))
+        );
+        glVertexAttribPointer(
+            2,
+            2,
+            GL_FLOAT,
+            GL_FALSE,
+            stride,
+            (void*)((2+4) * sizeof(float))
+        );
+        glBindVertexArray(0);
+    }
+
+    void render() {
+        glBindVertexArray(vao);
+        glDrawElements(GL_TRIANGLES, sprites.size() * 6, GL_UNSIGNED_INT, 0);
+    }
+};
+
 i16 get_chunktile(glm::ivec2 pos, glm::ivec2 local_pos) {
     Chunk* chunk = get_chunk(pos);
     if (chunk) return chunk->data[local_pos.y*ROWS+local_pos.x];
@@ -433,6 +597,18 @@ glm::vec2 world_pos_to_local_pos(glm::vec2 world_pos, glm::ivec2 chunk) {
 const int CHUNKS = 9;
 ChunkSlot cslots[CHUNKS];
 
+void opengl_dbg_callback(
+    GLenum source,
+    GLenum type,
+    GLuint id,
+    GLenum severity,
+    GLsizei length,
+    const GLchar* message,
+    const void* userParam
+) {
+    printf("OPENGL: %s\n", message);
+}
+
 int main() {
     srand(time(NULL));
     SDL_Init(SDL_INIT_VIDEO);
@@ -463,18 +639,18 @@ int main() {
     ImGui_ImplSDL2_InitForOpenGL(window, glctx);
     ImGui_ImplOpenGL3_Init();
 
-    SDL_Surface* atlas = IMG_Load("res/atlas.jpg");
-    if (!atlas) {
-        fprintf(stderr, "Unable to load img: %s\n", IMG_GetError());
-        return 1;
-    }
+    glEnable(GL_DEBUG_OUTPUT);
+    glDebugMessageCallback(opengl_dbg_callback, NULL);
+
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable( GL_BLEND );
 
     ccom = (ChunkCommonData*)Mem::alloc(sizeof(ChunkCommonData));
 
+    if (!texatlas.load_from_file("res/atlas.png", 4)) return 1;
     Camera camera;
 
     ccom->init_static_quad_data();
-    ccom->init_texcoords((float)atlas->w);
     ccom->fill_static_vertex_data();
     ccom->fill_indices_data();
     ccom->init_render_buffers();
@@ -484,14 +660,32 @@ int main() {
             cslots[i*3+j].allocate_client_buffers();
             cslots[i*3+j].set_current_chunk(glm::ivec2(j-1, i-1));
             cslots[i*3+j].fill_dynamic_vertex_data();
-            cslots[i*3+j].update_dynamic_buffer();
             cslots[i*3+j].init_render_buffers();
+            cslots[i*3+j].update_dynamic_buffer();
         }
     }
+    texatlas.init_for_render();
 
-    ShaderProgram shader;
-    if (!shader.init_from_files(
+    Sprite sprite = {
+        .pos = glm::vec2(100, 100),
+        .size = glm::vec2(16, 16),
+        .texture_idx = 4
+    };
+    SpriteBatch batch;
+    batch.sprites.push_back(&sprite);
+    batch.fill_vertex_data();
+    batch.fill_indices_data();
+    batch.init_render_buffers();
+
+    ShaderProgram chunk_shader;
+    if (!chunk_shader.init_from_files(
         "res/shaders/tilemap.vert",
+        "res/shaders/tilemap.frag")
+    ) return 1;
+
+    ShaderProgram sprite_shader;
+    if (!sprite_shader.init_from_files(
+        "res/shaders/sprite.vert",
         "res/shaders/tilemap.frag")
     ) return 1;
 
@@ -501,31 +695,12 @@ int main() {
         "res/shaders/dbg_line.frag")
     ) return 1;
 
-    GLuint tex;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        GL_RGB,
-        atlas->w,
-        atlas->h,
-        0,
-        GL_RGB,
-        GL_UNSIGNED_BYTE,
-        atlas->pixels
-    );
-    SDL_FreeSurface(atlas);
-
     auto begin_time = std::chrono::high_resolution_clock::now();
     auto end_time = begin_time;
     float dt = -1.0f;
 
-    bool wpress = false, apress = false, spress = false, dpress = false, lshiftpress = false;
+    bool wpress = false, apress = false, spress = false, dpress = false;
+    bool lshiftpress = false;
     bool mouse_down = false;
 
     glm::ivec2 cam_chunk = glm::ivec2();
@@ -533,7 +708,7 @@ int main() {
 
     int tile_to_place = 0;
 
-    printf("allocated %lu KB\n", Mem::allocated/1000);
+    printf("Mem::alloc(): allocated %lu KB\n", Mem::allocated/1000);
     bool running = true;
     while (running) {
         SDL_Event e;
@@ -588,16 +763,17 @@ int main() {
             }
         }
 
+        int x, y;
+        SDL_GetMouseState(&x, &y);
+        glm::vec2 mouse_ndc = glm::vec2(
+             (float)(x - WIDTH/2) / (float)WIDTH * 2,
+            -(float)(y - HEIGHT/2) / (float)HEIGHT * 2
+        );
+        glm::vec2 mouse_world =
+            glm::inverse(camera.proj * camera.view) *
+            glm::vec4(mouse_ndc.x, mouse_ndc.y, 0.0f, 1.0f);
+
         if (mouse_down) {
-            int x, y;
-            SDL_GetMouseState(&x, &y);
-            glm::vec2 mouse_ndc = glm::vec2(
-                 (float)(x - WIDTH/2) / (float)WIDTH * 2,
-                -(float)(y - HEIGHT/2) / (float)HEIGHT * 2
-            );
-            glm::vec2 mouse_world =
-                glm::inverse(camera.proj * camera.view) *
-                glm::vec4(mouse_ndc.x, mouse_ndc.y, 0.0f, 1.0f);
             glm::ivec2 mouse_chunk = world_pos_to_chunk(mouse_world);
 
             glm::vec2 tile_local_pos =
@@ -606,19 +782,20 @@ int main() {
                 tile_local_pos.x / TILE_SIZE,
                 tile_local_pos.y / TILE_SIZE
             );
-            int idx = tilexy.y*ROWS+tilexy.x;
             set_chunktile(
                 mouse_chunk,
                 tilexy,
                 tile_to_place
             );
-            printf(
-                "chunk: %d, %d  idx: %d\n",
-                mouse_chunk.x,
-                mouse_chunk.y,
-                idx
-            );
+            //printf(
+            //    "chunk: %d, %d  idx: %d\n",
+            //    mouse_chunk.x,
+            //    mouse_chunk.y,
+            //    idx
+            //);
         }
+
+        sprite.pos = floor(mouse_world / 16.0f) * 16.0f;
 
         float diafactor = 1.0f;
         if ((wpress || spress) && (apress || dpress)) diafactor = 0.7f;
@@ -637,9 +814,13 @@ int main() {
                     cslots[i*3+j].set_current_chunk(
                         glm::ivec2((j-1)+cam_chunk.x, (i-1)+cam_chunk.y)
                     );
+                    cslots[i*3+j].fill_dynamic_vertex_data();
+                    cslots[i*3+j].update_dynamic_buffer();
                 }
             }
         }
+        batch.fill_vertex_data();
+        batch.update_render_buffers();
 
         last_cam_chunk = cam_chunk;
 
@@ -665,12 +846,12 @@ int main() {
             cam_local_pos.y
         );
 
-        shader.use();
-        shader.upload_mat4("proj", camera.proj);
-        shader.upload_mat4("view", camera.view);
+        chunk_shader.use();
+        chunk_shader.upload_mat4("proj", camera.proj);
+        chunk_shader.upload_mat4("view", camera.view);
 
         for (int i = 0; i < CHUNKS; i++) {
-            shader.upload_ivec2("chunk", cslots[i].pos);
+            chunk_shader.upload_ivec2("chunk", cslots[i].pos);
             cslots[i].render();
         }
 
@@ -682,6 +863,11 @@ int main() {
             line_shader.upload_ivec2("chunk", cslots[i].pos);
             cslots[i].render_dbg_line();
         }
+
+        sprite_shader.use();
+        sprite_shader.upload_mat4("proj", camera.proj);
+        sprite_shader.upload_mat4("view", camera.view);
+        batch.render();
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

@@ -13,9 +13,9 @@ OBJS := $(addprefix build/obj/, $(addsuffix .o, $(SRCS)))
 
 INCLUDES := -I/usr/include/SDL2 -Ithirdparty
 LIBS := -lSDL2 -lSDL2_image -lGLEW -lGL -lglm
-FLAGS := -g -Wall -Wextra
+FLAGS := -g -O0 -Wall -Wextra -Wno-unused-parameter
 
-CC := g++
+CC := clang++
 
 run: $(OBJS) build/a.out
 	./build/a.out
