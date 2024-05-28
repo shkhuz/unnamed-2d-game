@@ -71,9 +71,12 @@ constexpr int TEXROWS = 4;
 constexpr int CHUNK_ROWS = 1;
 constexpr int TEX_TILE_SIZE = 256;
 
+class ChunkSlot;
+
 class Chunk {
 public:
     i16 data[ROWS*ROWS];
+    ChunkSlot* slot;
 };
 
 Chunk chunks[CHUNK_ROWS * CHUNK_ROWS] = {
@@ -110,7 +113,7 @@ Chunk chunks[CHUNK_ROWS * CHUNK_ROWS] = {
         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
         0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    }},
+    }, .slot = NULL },
 };
 
 Chunk* get_chunk(glm::ivec2 pos) {
@@ -170,7 +173,7 @@ public:
         }
     }
 
-    void init_texcoords(float atlas_width, float atlas_height) {
+    void init_texcoords(float atlas_dim) {
         for (int y = 0; y < TEXROWS; y++) {
             for (int x = 0; x < TEXROWS; x++) {
                 int offset = (y*TEXROWS+x)*8;
@@ -180,17 +183,17 @@ public:
                 glm::vec2 bot_right = glm::vec2((x+1)*TEX_TILE_SIZE-0.5f, (y+1)*TEX_TILE_SIZE-0.5f);
                 glm::vec2 bot_left =  glm::vec2((x+0)*TEX_TILE_SIZE+0.5f, (y+1)*TEX_TILE_SIZE-0.5f);
 
-                TEXCOORDS_LOOKUP[offset+0] = bot_left.x / atlas_width;
-                TEXCOORDS_LOOKUP[offset+1] = bot_left.y / atlas_width;
+                TEXCOORDS_LOOKUP[offset+0] = bot_left.x / atlas_dim;
+                TEXCOORDS_LOOKUP[offset+1] = bot_left.y / atlas_dim;
 
-                TEXCOORDS_LOOKUP[offset+2] = bot_right.x / atlas_width;
-                TEXCOORDS_LOOKUP[offset+3] = bot_right.y / atlas_width;
+                TEXCOORDS_LOOKUP[offset+2] = bot_right.x / atlas_dim;
+                TEXCOORDS_LOOKUP[offset+3] = bot_right.y / atlas_dim;
 
-                TEXCOORDS_LOOKUP[offset+4] = top_right.x / atlas_width;
-                TEXCOORDS_LOOKUP[offset+5] = top_right.y / atlas_width;
+                TEXCOORDS_LOOKUP[offset+4] = top_right.x / atlas_dim;
+                TEXCOORDS_LOOKUP[offset+5] = top_right.y / atlas_dim;
 
-                TEXCOORDS_LOOKUP[offset+6] = top_left.x / atlas_width;
-                TEXCOORDS_LOOKUP[offset+7] = top_left.y / atlas_width;
+                TEXCOORDS_LOOKUP[offset+6] = top_left.x / atlas_dim;
+                TEXCOORDS_LOOKUP[offset+7] = top_left.y / atlas_dim;
             }
         }
     }
@@ -280,17 +283,6 @@ public:
 
 ChunkCommonData* ccom = NULL;
 
-i16 get_tileinfo(glm::ivec2 pos, glm::ivec2 relchunk) {
-    Chunk* chunk = get_chunk(pos);
-    if (chunk) return chunk->data[relchunk.y*ROWS+relchunk.x];
-    else return -1;
-}
-
-void set_tileinfo(glm::ivec2 pos, glm::ivec2 relchunk, i16 val) {
-    Chunk* chunk = get_chunk(pos);
-    if (chunk) chunk->data[relchunk.y*ROWS+relchunk.x] = val;
-}
-
 class ChunkSlot {
 public:
     float* dynamic_vertex_data;
@@ -306,8 +298,10 @@ public:
     }
 
     void set_current_chunk(glm::ivec2 pos) {
+        printf("setting chunk\n");
         this->pos = pos;
         this->current = get_chunk(pos);
+        if (this->current) this->current->slot = this;
     }
 
     void fill_dynamic_vertex_data() {
@@ -401,6 +395,21 @@ public:
     }
 };
 
+i16 get_chunktile(glm::ivec2 pos, glm::ivec2 local_pos) {
+    Chunk* chunk = get_chunk(pos);
+    if (chunk) return chunk->data[local_pos.y*ROWS+local_pos.x];
+    else return -1;
+}
+
+void set_chunktile(glm::ivec2 pos, glm::ivec2 local_pos, i16 val) {
+    Chunk* chunk = get_chunk(pos);
+    if (chunk) {
+        chunk->data[local_pos.y*ROWS+local_pos.x] = val;
+        chunk->slot->fill_dynamic_vertex_data();
+        chunk->slot->update_dynamic_buffer();
+    }
+}
+
 glm::ivec2 world_pos_to_chunk(glm::vec2 world_pos) {
     glm::vec2 chunkf = glm::vec2(
         world_pos.x / (ROWS*TILE_SIZE),
@@ -413,12 +422,12 @@ glm::ivec2 world_pos_to_chunk(glm::vec2 world_pos) {
     return chunki;
 }
 
-glm::vec2 world_pos_to_relchunk_pos(glm::vec2 world_pos, glm::ivec2 chunk) {
-    glm::vec2 relchunk_pos = glm::vec2(
+glm::vec2 world_pos_to_local_pos(glm::vec2 world_pos, glm::ivec2 chunk) {
+    glm::vec2 local_pos = glm::vec2(
         world_pos.x - (chunk.x*32*16),
         world_pos.y - (chunk.y*32*16)
     );
-    return relchunk_pos;
+    return local_pos;
 }
 
 const int CHUNKS = 9;
@@ -450,7 +459,7 @@ int main() {
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
+    //ImGuiIO& io = ImGui::GetIO();
     ImGui_ImplSDL2_InitForOpenGL(window, glctx);
     ImGui_ImplOpenGL3_Init();
 
@@ -465,7 +474,7 @@ int main() {
     Camera camera;
 
     ccom->init_static_quad_data();
-    ccom->init_texcoords((float)atlas->w, (float)atlas->h);
+    ccom->init_texcoords((float)atlas->w);
     ccom->fill_static_vertex_data();
     ccom->fill_indices_data();
     ccom->init_render_buffers();
@@ -567,7 +576,7 @@ int main() {
                 }
 
             } else if (e.type == SDL_MOUSEBUTTONUP) {
-                if (e.button.button = SDL_BUTTON_LEFT) {
+                if (e.button.button == SDL_BUTTON_LEFT) {
                     mouse_down = false;
                 }
             } else if (e.type == SDL_MOUSEWHEEL) {
@@ -591,14 +600,14 @@ int main() {
                 glm::vec4(mouse_ndc.x, mouse_ndc.y, 0.0f, 1.0f);
             glm::ivec2 mouse_chunk = world_pos_to_chunk(mouse_world);
 
-            glm::vec2 tilepos_relchunk =
-                world_pos_to_relchunk_pos(mouse_world, mouse_chunk);
+            glm::vec2 tile_local_pos =
+                world_pos_to_local_pos(mouse_world, mouse_chunk);
             glm::ivec2 tilexy = glm::ivec2(
-                tilepos_relchunk.x / TILE_SIZE,
-                tilepos_relchunk.y / TILE_SIZE
+                tile_local_pos.x / TILE_SIZE,
+                tile_local_pos.y / TILE_SIZE
             );
             int idx = tilexy.y*ROWS+tilexy.x;
-            set_tileinfo(
+            set_chunktile(
                 mouse_chunk,
                 tilexy,
                 tile_to_place
@@ -631,10 +640,6 @@ int main() {
                 }
             }
         }
-        for (int i = 0; i < 9; i++) {
-            cslots[i].fill_dynamic_vertex_data();
-            cslots[i].update_dynamic_buffer();
-        }
 
         last_cam_chunk = cam_chunk;
 
@@ -653,11 +658,11 @@ int main() {
         ImGui::Text("cam_vel: (%f, %f)", camera.vel.x, camera.vel.y);
         ImGui::Text("cam_zoom: %f", camera.zoom);
         ImGui::Text("cam_chunk: (%d, %d)", cam_chunk.x, cam_chunk.y);
-        glm::vec2 cam_relchunk_pos = world_pos_to_relchunk_pos(camera.pos, cam_chunk);
+        glm::vec2 cam_local_pos = world_pos_to_local_pos(camera.pos, cam_chunk);
         ImGui::Text(
-            "cam_relchunk_pos: (%f, %f)",
-            cam_relchunk_pos.x,
-            cam_relchunk_pos.y
+            "cam_local_pos: (%f, %f)",
+            cam_local_pos.x,
+            cam_local_pos.y
         );
 
         shader.use();
