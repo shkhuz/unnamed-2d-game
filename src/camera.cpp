@@ -13,12 +13,12 @@ public:
     void set_proj() {
         float width = 1000.0f * zoom;
         float height = (360.0f/640.0f)*width;
-        proj = glm::ortho(-width/2, width/2, -height/2, height/2, 0.0f, 200.0f);
+        proj = glm::ortho(-width/2, width/2, -height/2, height/2, -20000.0f, 20000.0f);
     }
 
     void set_view() {
         view = glm::lookAt(
-            glm::vec3(pos.x, pos.y, 20.0f),
+            glm::vec3(pos.x, pos.y, 2000.0f),
             glm::vec3(pos.x, pos.y, -1.0f),
             glm::vec3(0.0f, 1.0f, 0.0f)
         );

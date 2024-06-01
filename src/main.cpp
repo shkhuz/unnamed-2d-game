@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <chrono>
 #include <vector>
+#include <bits/stdc++.h>
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -44,8 +45,13 @@ int FLAGS = SDL_WINDOW_OPENGL;
 
 class Random {
 public:
-    static float real() {
-        return (float)rand() / ((float)RAND_MAX/1.0f);
+    static float real(float range) {
+        return (float)rand() / ((float)RAND_MAX/range);
+    }
+
+    // `range` is exclusive
+    static int integer(int range) {
+        return (int)real((int)range);
     }
 };
 
@@ -137,11 +143,32 @@ public:
     glm::vec2 size;
     glm::vec2 pos_in_atlas;
     glm::vec2 size_in_atlas;
+
+    Sprite(
+        glm::vec2 pos,
+        glm::vec2 size,
+        glm::vec2 pos_in_atlas,
+        glm::vec2 size_in_atlas
+    ) {
+        this->pos.x = pos.x;
+        this->pos.y = pos.y;
+        // TODO: make separate batch for ground tiles
+        // instead of this hack.
+        this->pos.z = -(pos.y - size.y);
+
+        this->size = size;
+        this->pos_in_atlas = pos_in_atlas;
+        this->size_in_atlas = size_in_atlas;
+    }
 };
+
+bool compare_sprite_order(Sprite s1, Sprite s2) {
+    return s1.pos.z < s2.pos.z;
+}
 
 class SpriteBatch {
 public:
-    std::vector<Sprite*> sprites;
+    std::vector<Sprite> sprites;
 
     std::vector<float> vertex_data;
     std::vector<int> indices_data;
@@ -150,10 +177,11 @@ public:
 
     void fill_vertex_data() {
         vertex_data.clear();
-        vertex_data.reserve(1000 * 4 * (2+4+2));
+        vertex_data.reserve(1000 * 4 * (3+4+2));
 
+        std::sort(sprites.begin(), sprites.end(), compare_sprite_order);
         for (usize i = 0; i < sprites.size(); i++) {
-            Sprite s = *sprites[i];
+            Sprite s = sprites[i];
             glm::vec2 pos_lookup[4] = {
                 glm::vec2(s.pos.x,          s.pos.y+s.size.y),
                 glm::vec2(s.pos.x+s.size.x, s.pos.y+s.size.y),
@@ -166,7 +194,6 @@ public:
             for (int v = 0; v < 4; v++) {
                 vertex_data.push_back(pos_lookup[v].x);
                 vertex_data.push_back(pos_lookup[v].y);
-                vertex_data.push_back(s.pos.z);
 
                 vertex_data.push_back(1.0f);
                 vertex_data.push_back(1.0f);
@@ -195,6 +222,7 @@ public:
     }
 
     void update_render_buffers() {
+        glBindVertexArray(vao);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(
             GL_ARRAY_BUFFER,
@@ -224,10 +252,10 @@ public:
         glEnableVertexAttribArray(1);
         glEnableVertexAttribArray(2);
 
-        int stride = (3+4+2) * sizeof(float);
+        int stride = (2+4+2) * sizeof(float);
         glVertexAttribPointer(
             0,
-            3,
+            2,
             GL_FLOAT,
             GL_FALSE,
             stride,
@@ -239,7 +267,7 @@ public:
             GL_FLOAT,
             GL_FALSE,
             stride,
-            (void*)((3) * sizeof(float))
+            (void*)((2) * sizeof(float))
         );
         glVertexAttribPointer(
             2,
@@ -247,7 +275,7 @@ public:
             GL_FLOAT,
             GL_FALSE,
             stride,
-            (void*)((3+4) * sizeof(float))
+            (void*)((2+4) * sizeof(float))
         );
         glBindVertexArray(0);
     }
@@ -272,6 +300,9 @@ void opengl_dbg_callback(
 
 int main() {
     srand(time(NULL));
+    for (int i = 0; i < 100; i++) {
+        printf("%d ", Random::integer(100));
+    }
     SDL_Init(SDL_INIT_VIDEO);
     IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -304,56 +335,50 @@ int main() {
     glEnable(GL_DEBUG_OUTPUT);
     glDebugMessageCallback(opengl_dbg_callback, NULL);
 
-    //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    //glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_BLEND);
 
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-    glEnable(GL_DEPTH_TEST);
 
     if (!atlas.load_from_file("res/atlas.png")) return 1;
     atlas.init_for_render();
 
     Camera camera;
 
-    Sprite sprite = {
-        .pos = glm::vec3(0, 0, 20),
-        .size = glm::vec2(32, 44),
-        .pos_in_atlas = glm::vec2(0, 0),
-        .size_in_atlas = glm::vec2(32, 44),
-    };
-    Sprite sprite2 = {
-        .pos = glm::vec3(32, 0, 20),
-        .size = glm::vec2(32, 44),
-        .pos_in_atlas = glm::vec2(0, 0),
-        .size_in_atlas = glm::vec2(32, 44),
-    };
-    Sprite sprite3 = {
-        .pos = glm::vec3(0, 22, 19),
-        .size = glm::vec2(32, 44),
-        .pos_in_atlas = glm::vec2(0, 0),
-        .size_in_atlas = glm::vec2(32, 44),
-    };
-    Sprite sprite4 = {
-        .pos = glm::vec3(32, 22, 19),
-        .size = glm::vec2(32, 44),
-        .pos_in_atlas = glm::vec2(0, 0),
-        .size_in_atlas = glm::vec2(32, 44),
-    };
-
     SpriteBatch batch;
-    batch.sprites.push_back(&sprite);
-    batch.sprites.push_back(&sprite2);
-    batch.sprites.push_back(&sprite3);
-    batch.sprites.push_back(&sprite4);
+    glm::vec4 grass = glm::vec4(0, 0, 32, 23);
+    glm::vec4 tree1 = glm::vec4(0, 23, 32, 64);
+    glm::vec4 tree2 = glm::vec4(0, 23+64, 32, 70);
+
+    for (int y = 0; y < 8; y++) {
+        for (int x = 0; x < 8; x++) {
+            batch.sprites.push_back(Sprite(
+                glm::vec2(x*grass.z, y*grass.w),
+                glm::vec2(grass.z, grass.w),
+                glm::vec2(grass.x, grass.y),
+                glm::vec2(grass.z, grass.w)
+            ));
+        }
+    }
+
+    int num_trees = Random::integer(20);
+    printf("num_trees: %d\n", num_trees);
+    for (int i = 0; i < num_trees; i++) {
+        int x = Random::integer(8);
+        int y = Random::integer(8);
+        glm::vec4& tree = tree1;
+        if (Random::real(1) > 0.7f) tree = tree2;
+        batch.sprites.push_back(Sprite(
+            glm::vec2(x*grass.z, y*grass.w),
+            glm::vec2(tree.z, tree.w),
+            glm::vec2(tree.x, tree.y),
+            glm::vec2(tree.z, tree.w)
+        ));
+    }
+
     batch.fill_vertex_data();
     batch.fill_indices_data();
     batch.init_render_buffers();
-
-    for (usize i = 0; i < batch.vertex_data.size(); i++) {
-        printf("%7.3f ", batch.vertex_data[i]);
-        if ((i+1) % 9 == 0) printf("\n");
-        if ((i+1) % 36 == 0) printf("\n");
-    }
 
     ShaderProgram sprite_shader;
     if (!sprite_shader.init_from_files(
@@ -361,9 +386,11 @@ int main() {
         "res/shaders/sprite.frag")
     ) return 1;
 
+    auto start_time = std::chrono::high_resolution_clock::now();
     auto begin_time = std::chrono::high_resolution_clock::now();
     auto end_time = begin_time;
     float dt = -1.0f;
+    u64 frames = 0;
 
     bool wpress = false, apress = false, spress = false, dpress = false;
     bool mouse_down = false;
@@ -429,9 +456,6 @@ int main() {
         if (mouse_down) {
         }
 
-        //sprite.pos = floor(mouse_world / 16.0f) * 16.0f;
-        //sprite.pos = mouse_world;
-
         float diafactor = 1.0f;
         if ((wpress || spress) && (apress || dpress)) diafactor = 0.7f;
         float cam_speed_multiplier = 1.0f;
@@ -447,11 +471,15 @@ int main() {
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT);
 
         camera.set_proj();
         camera.set_view();
         ImGui::Text("fps: %f", 1.0f/dt);
+        double elapsed =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time)
+            .count() / 1e9;
+        ImGui::Text("avg_fps: %lf", ((double)frames)/elapsed);
         ImGui::Text("dt: %f", dt);
         ImGui::Text("cam_pos: (%f, %f)", camera.pos.x, camera.pos.y);
         ImGui::Text("cam_vel: (%f, %f)", camera.vel.x, camera.vel.y);
@@ -470,6 +498,7 @@ int main() {
             std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - begin_time)
             .count() / 1e9;
         begin_time = end_time;
+        frames++;
     }
 
     ImGui_ImplOpenGL3_Shutdown();
