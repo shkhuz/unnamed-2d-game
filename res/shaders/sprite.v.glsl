@@ -3,6 +3,7 @@
 layout(location = 0) in vec2 position;
 layout(location = 1) in vec4 color;
 layout(location = 2) in vec2 texcoords;
+layout(location = 3) in float type;
 
 uniform mat4 proj;
 uniform mat4 view;
@@ -14,7 +15,7 @@ out vec2 ftexcoords;
 float speed = 0.5;
 float min_strength = 0.05;
 float max_strength = 0.01;
-float strength_scale = 1.0;
+float strength_scale = 0.8;
 float interval = 3.5;
 float detail = 1.0;
 float distortion = 0.5;
@@ -33,8 +34,8 @@ float get_wind(vec2 vertex, vec2 uv, float time) {
 
 void main() {
     gl_Position = proj * view * vec4(position, 0.0, 1.0);
-    if (gl_VertexID%4 == 0 || gl_VertexID%4 == 1) {
-                                                            // Using (time*speed) + gl_VertexID) creates jitter
+    if (type == 1 && (gl_VertexID%4 == 0 || gl_VertexID%4 == 1)) {
+                                                             // Using (time*speed) + gl_VertexID) creates jitter
         gl_Position.x += get_wind(gl_Position.xy, texcoords, (time*speed) + position.x + position.y);
     }
     fcolor = color;

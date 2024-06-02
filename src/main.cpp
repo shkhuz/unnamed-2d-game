@@ -143,12 +143,14 @@ public:
     glm::vec2 size;
     glm::vec2 pos_in_atlas;
     glm::vec2 size_in_atlas;
+    int type;
 
     Sprite(
         glm::vec2 pos,
         glm::vec2 size,
         glm::vec2 pos_in_atlas,
-        glm::vec2 size_in_atlas
+        glm::vec2 size_in_atlas,
+        int type
     ) {
         this->pos.x = pos.x;
         this->pos.y = pos.y;
@@ -159,6 +161,7 @@ public:
         this->size = size;
         this->pos_in_atlas = pos_in_atlas;
         this->size_in_atlas = size_in_atlas;
+        this->type = type;
     }
 };
 
@@ -177,7 +180,7 @@ public:
 
     void fill_vertex_data() {
         vertex_data.clear();
-        vertex_data.reserve(1000 * 4 * (3+4+2));
+        vertex_data.reserve(1000 * 4 * (2+4+2+1));
 
         std::sort(sprites.begin(), sprites.end(), compare_sprite_order);
         for (usize i = 0; i < sprites.size(); i++) {
@@ -202,6 +205,8 @@ public:
 
                 vertex_data.push_back(uvholder[v*2]);
                 vertex_data.push_back(uvholder[v*2+1]);
+
+                vertex_data.push_back((float)s.type);
             }
         }
     }
@@ -251,8 +256,9 @@ public:
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
         glEnableVertexAttribArray(2);
+        glEnableVertexAttribArray(3);
 
-        int stride = (2+4+2) * sizeof(float);
+        int stride = (2+4+2+1) * sizeof(float);
         glVertexAttribPointer(
             0,
             2,
@@ -277,6 +283,14 @@ public:
             stride,
             (void*)((2+4) * sizeof(float))
         );
+        glVertexAttribPointer(
+            3,
+            1,
+            GL_FLOAT,
+            GL_FALSE,
+            stride,
+            (void*)((2+4+2) * sizeof(float))
+        );
         glBindVertexArray(0);
     }
 
@@ -296,6 +310,14 @@ void opengl_dbg_callback(
     const void* userParam
 ) {
     printf("OPENGL: %s\n", message);
+}
+
+bool lie_in_rect(glm::vec2 p, glm::vec2 rect_pos, glm::vec2 rect_size) {
+    if (p.x >= rect_pos.x && p.y > rect_pos.y &&
+        p.x <= rect_pos.x+rect_size.x && p.y <= rect_pos.y+rect_size.y) {
+        return true;
+    }
+    return false;
 }
 
 int main() {
@@ -324,7 +346,7 @@ int main() {
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    //ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO& io = ImGui::GetIO();
     ImGui_ImplSDL2_InitForOpenGL(window, glctx);
     ImGui_ImplOpenGL3_Init();
 
@@ -341,19 +363,20 @@ int main() {
 
     Camera camera;
 
-    SpriteBatch ground;
-    SpriteBatch trees;
-    glm::vec4 grass = glm::vec4(0, 0, 32, 23);
-    glm::vec4 tree1 = glm::vec4(0, 23, 32, 64);
-    glm::vec4 tree2 = glm::vec4(0, 23+64, 32, 70);
+    SpriteBatch batch;
+    glm::vec2 grass_pos = glm::vec2(0, 0);
+    glm::vec2 grass_size = glm::vec2(32, 23);
+    const glm::vec4 tree1 = glm::vec4(0, 23, 32, 64);
+    const glm::vec4 tree2 = glm::vec4(0, 23+64, 32, 70);
 
-    for (int y = 0; y < 8; y++) {
-        for (int x = 0; x < 8; x++) {
-            ground.sprites.push_back(Sprite(
-                glm::vec2(x*grass.z, y*grass.w),
-                glm::vec2(grass.z, grass.w),
-                glm::vec2(grass.x, grass.y),
-                glm::vec2(grass.z, grass.w)
+    for (int y = -8; y < 8; y++) {
+        for (int x = -8; x < 8; x++) {
+            batch.sprites.push_back(Sprite(
+                glm::vec2(x*grass_size.x, y*grass_size.y),
+                grass_size,
+                grass_pos,
+                grass_size,
+                0
             ));
         }
     }
@@ -361,52 +384,44 @@ int main() {
     int num_trees = 21;//Random::integer(20);
     printf("num_trees: %d\n", num_trees);
     for (int i = 0; i < num_trees; i++) {
-        int x = Random::integer(8);
-        int y = Random::integer(8);
-        glm::vec4& tree = tree1;
-        if (Random::real(1) > 0.7f) tree = tree2;
-        trees.sprites.push_back(Sprite(
-            glm::vec2(x*grass.z, y*grass.w),
+        int x = Random::integer(16) - 8;
+        int y = Random::integer(16) - 8;
+        const glm::vec4& tree = Random::real(1) > 0.7f ? tree2 : tree1;
+        batch.sprites.push_back(Sprite(
+            glm::vec2(x*grass_size.x, y*grass_size.y),
             glm::vec2(tree.z, tree.w),
             glm::vec2(tree.x, tree.y),
-            glm::vec2(tree.z, tree.w)
+            glm::vec2(tree.z, tree.w),
+            1
         ));
     }
 
-    ground.fill_vertex_data();
-    ground.fill_indices_data();
-    ground.init_render_buffers();
+    batch.fill_vertex_data();
+    batch.fill_indices_data();
+    batch.init_render_buffers();
 
-    trees.fill_vertex_data();
-    trees.fill_indices_data();
-    trees.init_render_buffers();
-
-    for (usize i = 0; i < trees.vertex_data.size(); i++) {
-        printf("%10.3f ", trees.vertex_data[i]);
-        if ((i+1) % 8 == 0) printf("\n");
-        if ((i+1) % 32 == 0) printf("\n");
-    }
+    /* for (usize i = 0; i < batch.vertex_data.size(); i++) { */
+    /*     printf("%9.3f ", batch.vertex_data[i]); */
+    /*     if ((i+1) % 9 == 0) printf("\n"); */
+    /*     if ((i+1) % 36 == 0) printf("\n"); */
+    /* } */
 
     ShaderProgram sprite_shader;
     if (!sprite_shader.init_from_files(
-        "res/shaders/sprite.vert",
-        "res/shaders/sprite.frag")
-    ) return 1;
-
-    ShaderProgram tree_shader;
-    if (!tree_shader.init_from_files(
-        "res/shaders/tree.vert",
-        "res/shaders/tree.frag")
+        "res/shaders/sprite.v.glsl",
+        "res/shaders/sprite.f.glsl")
     ) return 1;
 
     auto start_time = std::chrono::high_resolution_clock::now();
-    auto begin_time = std::chrono::high_resolution_clock::now();
+    auto begin_time = start_time;
     auto end_time = begin_time;
     float dt = -1.0f;
     u64 frames = 0;
 
     bool wpress = false, apress = false, spress = false, dpress = false;
-    bool mouse_down = false;
+    bool lmouse_down = false, just_lmouse_down = false;
+    bool rmouse_down = false, just_rmouse_down = false;
+    int tree_type = 0;
 
     printf("Mem::alloc(): allocated %lu KB\n", Mem::allocated/1000);
     bool running = true;
@@ -414,6 +429,9 @@ int main() {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             ImGui_ImplSDL2_ProcessEvent(&e);
+            if (io.WantCaptureMouse || io.WantCaptureKeyboard) {
+                continue;
+            }
             if (e.type == SDL_QUIT) running = false;
 
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
@@ -440,12 +458,18 @@ int main() {
 
             } else if (e.type == SDL_MOUSEBUTTONDOWN) {
                 if (e.button.button == SDL_BUTTON_LEFT) {
-                    mouse_down = true;
+                    lmouse_down = true;
+                    just_lmouse_down = true;
+                } else if (e.button.button == SDL_BUTTON_RIGHT) {
+                    rmouse_down = true;
+                    just_rmouse_down = true;
                 }
 
             } else if (e.type == SDL_MOUSEBUTTONUP) {
                 if (e.button.button == SDL_BUTTON_LEFT) {
-                    mouse_down = false;
+                    lmouse_down = false;
+                } else if (e.button.button == SDL_BUTTON_RIGHT) {
+                    rmouse_down = false;
                 }
             } else if (e.type == SDL_MOUSEWHEEL) {
                 float subt_from_zoom = e.wheel.preciseY * Camera::CAM_ZOOM_SPEED;
@@ -472,7 +496,26 @@ int main() {
             glm::inverse(camera.proj * camera.view) *
             glm::vec4(mouse_ndc.x, mouse_ndc.y, 0.0f, 1.0f);
 
-        if (mouse_down) {
+        if (just_lmouse_down) {
+            glm::vec2 tilepos = floor(mouse_world / grass_size) * grass_size;
+            const glm::vec4& tree = tree_type == 1 ? tree1 : tree2;
+            batch.sprites.push_back(Sprite {
+                tilepos,
+                glm::vec2(tree.z, tree.w),
+                glm::vec2(tree.x, tree.y),
+                glm::vec2(tree.z, tree.w),
+                1
+            });
+        }
+
+        if (just_rmouse_down) {
+            for (usize i = batch.sprites.size(); i --> 0;) {
+                if (batch.sprites[i].type == 1 &&
+                    lie_in_rect(mouse_world, batch.sprites[i].pos, batch.sprites[i].size)) {
+                    batch.sprites.erase(batch.sprites.begin()+i);
+                    break;
+                }
+            }
         }
 
         float diafactor = 1.0f;
@@ -483,11 +526,9 @@ int main() {
 
         camera.pos += dt * camera.vel;
 
-        ground.fill_vertex_data();
-        ground.update_render_buffers();
-
-        trees.fill_vertex_data();
-        trees.update_render_buffers();
+        batch.fill_vertex_data();
+        batch.fill_indices_data();
+        batch.update_render_buffers();
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
@@ -507,17 +548,13 @@ int main() {
         ImGui::Text("cam_vel: (%f, %f)", camera.vel.x, camera.vel.y);
         ImGui::Text("cam_zoom: %f", camera.zoom);
         ImGui::Text("mouse_world: (%f, %f)", mouse_world.x, mouse_world.y);
+        ImGui::SliderInt("tree_type", &tree_type, 0, 1);
 
         sprite_shader.use();
         sprite_shader.upload_mat4("proj", camera.proj);
         sprite_shader.upload_mat4("view", camera.view);
-        ground.render();
-
-        tree_shader.use();
-        tree_shader.upload_mat4("proj", camera.proj);
-        tree_shader.upload_mat4("view", camera.view);
-        tree_shader.upload_float("time", (float)elapsed);
-        trees.render();
+        sprite_shader.upload_float("time", (float)elapsed);
+        batch.render();
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -528,6 +565,8 @@ int main() {
             .count() / 1e9;
         begin_time = end_time;
         frames++;
+        just_lmouse_down = false;
+        just_rmouse_down = false;
     }
 
     ImGui_ImplOpenGL3_Shutdown();
