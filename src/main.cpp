@@ -37,7 +37,7 @@ typedef ssize_t isize;
 
 int WIDTH = 1280;
 int HEIGHT = 720;
-int FLAGS = SDL_WINDOW_OPENGL;
+int FLAGS = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
 
 //int WIDTH = 1920;
 //int HEIGHT = 1080;
@@ -300,15 +300,11 @@ void opengl_dbg_callback(
 
 int main() {
     srand(time(NULL));
-    for (int i = 0; i < 100; i++) {
-        printf("%d ", Random::integer(100));
-    }
     SDL_Init(SDL_INIT_VIDEO);
     IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
     SDL_Window* window = SDL_CreateWindow(
         "OpenGL",
@@ -345,14 +341,15 @@ int main() {
 
     Camera camera;
 
-    SpriteBatch batch;
+    SpriteBatch ground;
+    SpriteBatch trees;
     glm::vec4 grass = glm::vec4(0, 0, 32, 23);
     glm::vec4 tree1 = glm::vec4(0, 23, 32, 64);
     glm::vec4 tree2 = glm::vec4(0, 23+64, 32, 70);
 
     for (int y = 0; y < 8; y++) {
         for (int x = 0; x < 8; x++) {
-            batch.sprites.push_back(Sprite(
+            ground.sprites.push_back(Sprite(
                 glm::vec2(x*grass.z, y*grass.w),
                 glm::vec2(grass.z, grass.w),
                 glm::vec2(grass.x, grass.y),
@@ -361,14 +358,14 @@ int main() {
         }
     }
 
-    int num_trees = Random::integer(20);
+    int num_trees = 21;//Random::integer(20);
     printf("num_trees: %d\n", num_trees);
     for (int i = 0; i < num_trees; i++) {
         int x = Random::integer(8);
         int y = Random::integer(8);
         glm::vec4& tree = tree1;
         if (Random::real(1) > 0.7f) tree = tree2;
-        batch.sprites.push_back(Sprite(
+        trees.sprites.push_back(Sprite(
             glm::vec2(x*grass.z, y*grass.w),
             glm::vec2(tree.z, tree.w),
             glm::vec2(tree.x, tree.y),
@@ -376,14 +373,30 @@ int main() {
         ));
     }
 
-    batch.fill_vertex_data();
-    batch.fill_indices_data();
-    batch.init_render_buffers();
+    ground.fill_vertex_data();
+    ground.fill_indices_data();
+    ground.init_render_buffers();
+
+    trees.fill_vertex_data();
+    trees.fill_indices_data();
+    trees.init_render_buffers();
+
+    for (usize i = 0; i < trees.vertex_data.size(); i++) {
+        printf("%10.3f ", trees.vertex_data[i]);
+        if ((i+1) % 8 == 0) printf("\n");
+        if ((i+1) % 32 == 0) printf("\n");
+    }
 
     ShaderProgram sprite_shader;
     if (!sprite_shader.init_from_files(
         "res/shaders/sprite.vert",
         "res/shaders/sprite.frag")
+    ) return 1;
+
+    ShaderProgram tree_shader;
+    if (!tree_shader.init_from_files(
+        "res/shaders/tree.vert",
+        "res/shaders/tree.frag")
     ) return 1;
 
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -440,6 +453,12 @@ int main() {
                 //    camera.zoom - subt_from_zoom < 1.0f) {
                     camera.zoom -= subt_from_zoom;
                 //}
+            } else if (e.type == SDL_WINDOWEVENT) {
+                if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
+                    WIDTH = e.window.data1;
+                    HEIGHT = e.window.data2;
+                    glViewport(0, 0, WIDTH, HEIGHT);
+                }
             }
         }
 
@@ -464,8 +483,11 @@ int main() {
 
         camera.pos += dt * camera.vel;
 
-        batch.fill_vertex_data();
-        batch.update_render_buffers();
+        ground.fill_vertex_data();
+        ground.update_render_buffers();
+
+        trees.fill_vertex_data();
+        trees.update_render_buffers();
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
@@ -484,11 +506,18 @@ int main() {
         ImGui::Text("cam_pos: (%f, %f)", camera.pos.x, camera.pos.y);
         ImGui::Text("cam_vel: (%f, %f)", camera.vel.x, camera.vel.y);
         ImGui::Text("cam_zoom: %f", camera.zoom);
+        ImGui::Text("mouse_world: (%f, %f)", mouse_world.x, mouse_world.y);
 
         sprite_shader.use();
         sprite_shader.upload_mat4("proj", camera.proj);
         sprite_shader.upload_mat4("view", camera.view);
-        batch.render();
+        ground.render();
+
+        tree_shader.use();
+        tree_shader.upload_mat4("proj", camera.proj);
+        tree_shader.upload_mat4("view", camera.view);
+        tree_shader.upload_float("time", (float)elapsed);
+        trees.render();
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

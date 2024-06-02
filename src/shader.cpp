@@ -21,6 +21,7 @@ public:
     bool lateinit();
     void use();
     void upload_mat4(const char* var, glm::mat4 mat4);
+    void upload_float(const char* var, float f);
     void upload_ivec2(const char* var, glm::ivec2 ivec2);
 };
 
@@ -65,7 +66,7 @@ bool Shader::init_from_file(GLenum kind, const char* path) {
         fprintf(stderr, "Error reading %s shader in path %s\n", shader_kind_to_string(kind), path);
         return false;
     } else {
-        printf("%s shader %s loaded successfully\n", shader_kind_to_string(kind), path);
+        //printf("%s shader %s loaded successfully\n", shader_kind_to_string(kind), path);
     }
 
     return this->init_from_string(kind, src.handle.contents);
@@ -128,6 +129,11 @@ void ShaderProgram::use() {
 void ShaderProgram::upload_mat4(const char* var, glm::mat4 mat4) {
     GLuint varloc = glGetUniformLocation(id, var);
     glUniformMatrix4fv(varloc, 1, GL_FALSE, glm::value_ptr(mat4));
+}
+
+void ShaderProgram::upload_float(const char* var, float f) {
+    GLuint varloc = glGetUniformLocation(id, var);
+    glUniform1f(varloc, f);
 }
 
 void ShaderProgram::upload_ivec2(const char* var, glm::ivec2 ivec2) {
