@@ -166,7 +166,7 @@ public:
 };
 
 bool compare_sprite_order(Sprite s1, Sprite s2) {
-    return s1.pos.z < s2.pos.z;
+    return s1.pos.z == s2.pos.z ? s1.type > s2.type : s1.pos.z < s2.pos.z;
 }
 
 class SpriteBatch {
@@ -183,6 +183,7 @@ public:
         vertex_data.reserve(1000 * 4 * (2+4+2+1));
 
         std::sort(sprites.begin(), sprites.end(), compare_sprite_order);
+
         for (usize i = 0; i < sprites.size(); i++) {
             Sprite s = sprites[i];
             glm::vec2 pos_lookup[4] = {
@@ -363,15 +364,25 @@ int main() {
 
     Camera camera;
 
-    SpriteBatch batch;
-    glm::vec2 grass_pos = glm::vec2(0, 0);
-    glm::vec2 grass_size = glm::vec2(32, 23);
-    const glm::vec4 tree1 = glm::vec4(0, 23, 32, 64);
-    const glm::vec4 tree2 = glm::vec4(0, 23+64, 32, 70);
+    SpriteBatch ground;
+    SpriteBatch foreground;
+    glm::vec2 grass_pos = glm::vec2(4*32, 0*32);
+    glm::vec2 grass_size = glm::vec2(85, 64);
+    const glm::vec4 tree1 = glm::vec4(96, 0, 32, 64);
+    const glm::vec4 tree2 = glm::vec4(96, 64, 32, 70);
+    const glm::vec2 walls[] = {
+        glm::vec2(4*32, 2*32),
+        glm::vec2(5*32, 2*32),
+        glm::vec2(4*32, 3*32),
+        glm::vec2(5*32, 3*32),
+        glm::vec2(6*32, 2*32),
+        glm::vec2(6*32, 3*32)
+    };
+    const glm::vec2 wall_size = glm::vec2(32, 32);
 
     for (int y = -8; y < 8; y++) {
         for (int x = -8; x < 8; x++) {
-            batch.sprites.push_back(Sprite(
+            ground.sprites.push_back(Sprite(
                 glm::vec2(x*grass_size.x, y*grass_size.y),
                 grass_size,
                 grass_pos,
@@ -381,13 +392,13 @@ int main() {
         }
     }
 
-    int num_trees = 21;//Random::integer(20);
+    int num_trees = 40;//Random::integer(20);
     printf("num_trees: %d\n", num_trees);
     for (int i = 0; i < num_trees; i++) {
         int x = Random::integer(16) - 8;
         int y = Random::integer(16) - 8;
         const glm::vec4& tree = Random::real(1) > 0.7f ? tree2 : tree1;
-        batch.sprites.push_back(Sprite(
+        foreground.sprites.push_back(Sprite(
             glm::vec2(x*grass_size.x, y*grass_size.y),
             glm::vec2(tree.z, tree.w),
             glm::vec2(tree.x, tree.y),
@@ -396,9 +407,13 @@ int main() {
         ));
     }
 
-    batch.fill_vertex_data();
-    batch.fill_indices_data();
-    batch.init_render_buffers();
+    ground.fill_vertex_data();
+    ground.fill_indices_data();
+    ground.init_render_buffers();
+
+    foreground.fill_vertex_data();
+    foreground.fill_indices_data();
+    foreground.init_render_buffers();
 
     /* for (usize i = 0; i < batch.vertex_data.size(); i++) { */
     /*     printf("%9.3f ", batch.vertex_data[i]); */
@@ -421,7 +436,7 @@ int main() {
     bool wpress = false, apress = false, spress = false, dpress = false;
     bool lmouse_down = false, just_lmouse_down = false;
     bool rmouse_down = false, just_rmouse_down = false;
-    int tree_type = 0;
+    int current_wall_type = 0;
 
     printf("Mem::alloc(): allocated %lu KB\n", Mem::allocated/1000);
     bool running = true;
@@ -497,22 +512,21 @@ int main() {
             glm::vec4(mouse_ndc.x, mouse_ndc.y, 0.0f, 1.0f);
 
         if (just_lmouse_down) {
-            glm::vec2 tilepos = floor(mouse_world / grass_size) * grass_size;
-            const glm::vec4& tree = tree_type == 1 ? tree1 : tree2;
-            batch.sprites.push_back(Sprite {
+            glm::vec2 tilepos = floor(mouse_world / wall_size) * wall_size;
+            foreground.sprites.push_back(Sprite {
                 tilepos,
-                glm::vec2(tree.z, tree.w),
-                glm::vec2(tree.x, tree.y),
-                glm::vec2(tree.z, tree.w),
-                1
+                wall_size,
+                walls[current_wall_type],
+                wall_size,
+                2
             });
         }
 
         if (just_rmouse_down) {
-            for (usize i = batch.sprites.size(); i --> 0;) {
-                if (batch.sprites[i].type == 1 &&
-                    lie_in_rect(mouse_world, batch.sprites[i].pos, batch.sprites[i].size)) {
-                    batch.sprites.erase(batch.sprites.begin()+i);
+            for (usize i = foreground.sprites.size(); i --> 0;) {
+                if (foreground.sprites[i].type == 2 &&
+                    lie_in_rect(mouse_world, foreground.sprites[i].pos, foreground.sprites[i].size)) {
+                    foreground.sprites.erase(foreground.sprites.begin()+i);
                     break;
                 }
             }
@@ -526,9 +540,13 @@ int main() {
 
         camera.pos += dt * camera.vel;
 
-        batch.fill_vertex_data();
-        batch.fill_indices_data();
-        batch.update_render_buffers();
+        ground.fill_vertex_data();
+        ground.fill_indices_data();
+        ground.update_render_buffers();
+
+        foreground.fill_vertex_data();
+        foreground.fill_indices_data();
+        foreground.update_render_buffers();
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
@@ -548,13 +566,16 @@ int main() {
         ImGui::Text("cam_vel: (%f, %f)", camera.vel.x, camera.vel.y);
         ImGui::Text("cam_zoom: %f", camera.zoom);
         ImGui::Text("mouse_world: (%f, %f)", mouse_world.x, mouse_world.y);
-        ImGui::SliderInt("tree_type", &tree_type, 0, 1);
+
+        const char* wall_names[] = { "dr", "dl", "ur", "ul", "v", "h" };
+        ImGui::Combo("wall", &current_wall_type, wall_names, IM_ARRAYSIZE(wall_names));
 
         sprite_shader.use();
         sprite_shader.upload_mat4("proj", camera.proj);
         sprite_shader.upload_mat4("view", camera.view);
         sprite_shader.upload_float("time", (float)elapsed);
-        batch.render();
+        ground.render();
+        foreground.render();
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

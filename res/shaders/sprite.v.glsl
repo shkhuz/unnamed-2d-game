@@ -15,7 +15,7 @@ out vec2 ftexcoords;
 float speed = 0.5;
 float min_strength = 0.05;
 float max_strength = 0.01;
-float strength_scale = 0.8;
+float strength_scale = 300;
 float interval = 3.5;
 float detail = 1.0;
 float distortion = 0.5;
@@ -33,11 +33,12 @@ float get_wind(vec2 vertex, vec2 uv, float time) {
 }
 
 void main() {
-    gl_Position = proj * view * vec4(position, 0.0, 1.0);
+    vec2 new_position = position;
     if (type == 1 && (gl_VertexID%4 == 0 || gl_VertexID%4 == 1)) {
-                                                             // Using (time*speed) + gl_VertexID) creates jitter
-        gl_Position.x += get_wind(gl_Position.xy, texcoords, (time*speed) + position.x + position.y);
+        // Using (time*speed) + gl_VertexID) creates jitter
+        new_position.x += get_wind(gl_Position.xy, texcoords, (time*speed) + position.x + position.y);
     }
+    gl_Position = proj * view * vec4(new_position, 0.0, 1.0);
     fcolor = color;
     ftexcoords = texcoords;
 }

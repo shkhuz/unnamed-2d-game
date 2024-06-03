@@ -2,6 +2,6 @@ A game built in a custom 2D engine. Needs `make`, `SDL2`, `SDL2_image`, `GLEW` a
 
 Building is as simple as running `make`:
 
-```sh
+```console
 make
 ```
