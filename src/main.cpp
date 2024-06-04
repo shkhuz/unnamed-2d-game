@@ -366,8 +366,11 @@ int main() {
 
     SpriteBatch ground;
     SpriteBatch foreground;
-    glm::vec2 grass_pos = glm::vec2(4*32, 0*32);
-    glm::vec2 grass_size = glm::vec2(85, 64);
+    glm::vec2 grass1_pos = glm::vec2(4*32, 0*32);
+    glm::vec2 grass2_pos = glm::vec2(5*32, 0*32);
+    glm::vec2 grass3_pos = glm::vec2(6*32, 0*32);
+    glm::vec2 grass4_pos = glm::vec2(7*32, 0*32);
+    glm::vec2 grass_size = glm::vec2(64, 64);
     const glm::vec4 tree1 = glm::vec4(96, 0, 32, 64);
     const glm::vec4 tree2 = glm::vec4(96, 64, 32, 70);
     const glm::vec2 walls[] = {
@@ -382,6 +385,11 @@ int main() {
 
     for (int y = -8; y < 8; y++) {
         for (int x = -8; x < 8; x++) {
+            float r = Random::real(1.0f);
+            glm::vec2& grass_pos = grass1_pos;
+            if (r > 0.75f) grass_pos = grass2_pos;
+            else if (r > 0.50f) grass_pos = grass3_pos;
+            else if (r > 0.25f) grass_pos = grass4_pos;
             ground.sprites.push_back(Sprite(
                 glm::vec2(x*grass_size.x, y*grass_size.y),
                 grass_size,
