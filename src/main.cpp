@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <chrono>
 #include <vector>
+#include <unordered_map>
 #include <bits/stdc++.h>
 
 typedef uint8_t u8;
@@ -321,6 +322,27 @@ bool lie_in_rect(glm::vec2 p, glm::vec2 rect_pos, glm::vec2 rect_size) {
     return false;
 }
 
+#include "wall_connect.cpp"
+
+u8 get_up_connect(u16 tile)    { return (tile>>9) & 7; }
+u8 get_right_connect(u16 tile) { return (tile>>6) & 7; }
+u8 get_down_connect(u16 tile)  { return (tile>>3) & 7; }
+u8 get_left_connect(u16 tile)  { return (tile>>0) & 7; }
+
+void set_up_connect(u16* tile, u8 c)    { *tile |= ((u16)c<<9); }
+void set_right_connect(u16* tile, u8 c) { *tile |= ((u16)c<<6); }
+void set_down_connect(u16* tile, u8 c)  { *tile |= ((u16)c<<3); }
+void set_left_connect(u16* tile, u8 c)  { *tile |= ((u16)c<<0); }
+
+u16 get_wall_with_neis(u16 utile, u16 rtile, u16 dtile, u16 ltile) {
+    u16 wall = 0;
+    set_up_connect(&wall, get_down_connect(utile));
+    set_right_connect(&wall, get_left_connect(rtile));
+    set_down_connect(&wall, get_up_connect(dtile));
+    set_left_connect(&wall, get_right_connect(ltile));
+    return wall;
+}
+
 int main() {
     srand(time(NULL));
     SDL_Init(SDL_INIT_VIDEO);
@@ -373,15 +395,64 @@ int main() {
     glm::vec2 grass_size = glm::vec2(64, 64);
     const glm::vec4 tree1 = glm::vec4(96, 0, 32, 64);
     const glm::vec4 tree2 = glm::vec4(96, 64, 32, 70);
-    const glm::vec2 walls[] = {
-        glm::vec2(4*32, 2*32),
-        glm::vec2(5*32, 2*32),
-        glm::vec2(4*32, 3*32),
-        glm::vec2(5*32, 3*32),
-        glm::vec2(6*32, 2*32),
-        glm::vec2(6*32, 3*32)
-    };
     const glm::vec2 wall_size = glm::vec2(32, 32);
+
+    std::unordered_map<int, glm::vec2> wall_pos;
+    glm::ivec2 wall_atlas_pos = glm::vec2(4, 2);
+    glm::ivec2 wall_atlas_size = glm::vec2(8, 6);
+    for (int y = 0; y < wall_atlas_size.y; y++) {
+        for (int x = 0; x < wall_atlas_size.x; x++) {
+            u16 id = wall_connect[y*wall_atlas_size.x+x];
+            wall_pos[id] = glm::vec2((wall_atlas_pos.x+x)*32, (wall_atlas_pos.y+y)*32);
+            printf("putting %5d as (%4.3f, %7.3f)\n", id, wall_pos[id].x, wall_pos[id].y);
+        }
+        printf("\n");
+    }
+
+    u16 u = 0b000'000'010'010;
+    u16 r = 0b000'010'000'010;
+    u16 d = 0b010'000'010'000;
+    u16 l = 0b000'000'010'000;
+
+    foreground.sprites.push_back(Sprite {
+        glm::vec2(0, 32),
+        wall_size,
+        wall_pos[u],
+        wall_size,
+        2
+    });
+
+    foreground.sprites.push_back(Sprite {
+        glm::vec2(32, 0),
+        wall_size,
+        wall_pos[r],
+        wall_size,
+        2
+    });
+
+    foreground.sprites.push_back(Sprite {
+        glm::vec2(0, -32),
+        wall_size,
+        wall_pos[d],
+        wall_size,
+        2
+    });
+
+    foreground.sprites.push_back(Sprite {
+        glm::vec2(-32, 0),
+        wall_size,
+        wall_pos[l],
+        wall_size,
+        2
+    });
+
+    foreground.sprites.push_back(Sprite {
+        glm::vec2(0, 0),
+        wall_size,
+        wall_pos[get_wall_with_neis(u, r, d, l)],
+        wall_size,
+        2
+    });
 
     for (int y = -8; y < 8; y++) {
         for (int x = -8; x < 8; x++) {
@@ -444,7 +515,6 @@ int main() {
     bool wpress = false, apress = false, spress = false, dpress = false;
     bool lmouse_down = false, just_lmouse_down = false;
     bool rmouse_down = false, just_rmouse_down = false;
-    int current_wall_type = 0;
 
     printf("Mem::alloc(): allocated %lu KB\n", Mem::allocated/1000);
     bool running = true;
@@ -496,10 +566,10 @@ int main() {
                 }
             } else if (e.type == SDL_MOUSEWHEEL) {
                 float subt_from_zoom = e.wheel.preciseY * Camera::CAM_ZOOM_SPEED;
-                //if (camera.zoom - subt_from_zoom >= 0.5f &&
-                //    camera.zoom - subt_from_zoom < 1.0f) {
+                if (camera.zoom - subt_from_zoom >= 0.5f &&
+                    camera.zoom - subt_from_zoom < 2.0f) {
                     camera.zoom -= subt_from_zoom;
-                //}
+                }
             } else if (e.type == SDL_WINDOWEVENT) {
                 if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
                     WIDTH = e.window.data1;
@@ -521,23 +591,9 @@ int main() {
 
         if (just_lmouse_down) {
             glm::vec2 tilepos = floor(mouse_world / wall_size) * wall_size;
-            foreground.sprites.push_back(Sprite {
-                tilepos,
-                wall_size,
-                walls[current_wall_type],
-                wall_size,
-                2
-            });
         }
 
         if (just_rmouse_down) {
-            for (usize i = foreground.sprites.size(); i --> 0;) {
-                if (foreground.sprites[i].type == 2 &&
-                    lie_in_rect(mouse_world, foreground.sprites[i].pos, foreground.sprites[i].size)) {
-                    foreground.sprites.erase(foreground.sprites.begin()+i);
-                    break;
-                }
-            }
         }
 
         float diafactor = 1.0f;
@@ -574,9 +630,6 @@ int main() {
         ImGui::Text("cam_vel: (%f, %f)", camera.vel.x, camera.vel.y);
         ImGui::Text("cam_zoom: %f", camera.zoom);
         ImGui::Text("mouse_world: (%f, %f)", mouse_world.x, mouse_world.y);
-
-        const char* wall_names[] = { "dr", "dl", "ur", "ul", "v", "h" };
-        ImGui::Combo("wall", &current_wall_type, wall_names, IM_ARRAYSIZE(wall_names));
 
         sprite_shader.use();
         sprite_shader.upload_mat4("proj", camera.proj);
