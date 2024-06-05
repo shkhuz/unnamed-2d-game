@@ -74,6 +74,14 @@ public:
     }
 };
 
+void print_vec2(glm::vec2 v) {
+    printf("(%f, %f) ", v.x, v.y);
+}
+
+void print_ivec2(glm::ivec2 v) {
+    printf("(%d, %d) ", v.x, v.y);
+}
+
 static float uvholder[8];
 
 class TextureAtlas {
@@ -166,141 +174,8 @@ public:
     }
 };
 
-bool compare_sprite_order(Sprite s1, Sprite s2) {
-    return s1.pos.z == s2.pos.z ? s1.type > s2.type : s1.pos.z < s2.pos.z;
-}
-
-class SpriteBatch {
-public:
-    std::vector<Sprite> sprites;
-
-    std::vector<float> vertex_data;
-    std::vector<int> indices_data;
-
-    GLuint vao, vbo, ibo;
-
-    void fill_vertex_data() {
-        vertex_data.clear();
-        vertex_data.reserve(1000 * 4 * (2+4+2+1));
-
-        std::sort(sprites.begin(), sprites.end(), compare_sprite_order);
-
-        for (usize i = 0; i < sprites.size(); i++) {
-            Sprite s = sprites[i];
-            glm::vec2 pos_lookup[4] = {
-                glm::vec2(s.pos.x,          s.pos.y+s.size.y),
-                glm::vec2(s.pos.x+s.size.x, s.pos.y+s.size.y),
-                glm::vec2(s.pos.x+s.size.x, s.pos.y),
-                glm::vec2(s.pos.x,          s.pos.y),
-            };
-
-            atlas.get_uvcoords(s.pos_in_atlas, s.size_in_atlas);
-
-            for (int v = 0; v < 4; v++) {
-                vertex_data.push_back(pos_lookup[v].x);
-                vertex_data.push_back(pos_lookup[v].y);
-
-                vertex_data.push_back(1.0f);
-                vertex_data.push_back(1.0f);
-                vertex_data.push_back(1.0f);
-                vertex_data.push_back(1.0f);
-
-                vertex_data.push_back(uvholder[v*2]);
-                vertex_data.push_back(uvholder[v*2+1]);
-
-                vertex_data.push_back((float)s.type);
-            }
-        }
-    }
-
-    void fill_indices_data() {
-        indices_data.clear();
-        indices_data.reserve(1000 * 6);
-
-        for (usize i = 0; i < sprites.size(); i++) {
-            indices_data.push_back(3 + i*4);
-            indices_data.push_back(2 + i*4);
-            indices_data.push_back(1 + i*4);
-
-            indices_data.push_back(1 + i*4);
-            indices_data.push_back(0 + i*4);
-            indices_data.push_back(3 + i*4);
-        }
-    }
-
-    void update_render_buffers() {
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(
-            GL_ARRAY_BUFFER,
-            vertex_data.size() * sizeof(float),
-            vertex_data.data(),
-            GL_DYNAMIC_DRAW
-        );
-
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
-        glBufferData(
-            GL_ELEMENT_ARRAY_BUFFER,
-            indices_data.size() * sizeof(int),
-            indices_data.data(),
-            GL_DYNAMIC_DRAW
-        );
-    }
-
-    void init_render_buffers() {
-        glGenVertexArrays(1, &vao);
-        glBindVertexArray(vao);
-
-        glGenBuffers(1, &vbo);
-        glGenBuffers(1, &ibo);
-        update_render_buffers();
-
-        glEnableVertexAttribArray(0);
-        glEnableVertexAttribArray(1);
-        glEnableVertexAttribArray(2);
-        glEnableVertexAttribArray(3);
-
-        int stride = (2+4+2+1) * sizeof(float);
-        glVertexAttribPointer(
-            0,
-            2,
-            GL_FLOAT,
-            GL_FALSE,
-            stride,
-            0
-        );
-        glVertexAttribPointer(
-            1,
-            4,
-            GL_FLOAT,
-            GL_FALSE,
-            stride,
-            (void*)((2) * sizeof(float))
-        );
-        glVertexAttribPointer(
-            2,
-            2,
-            GL_FLOAT,
-            GL_FALSE,
-            stride,
-            (void*)((2+4) * sizeof(float))
-        );
-        glVertexAttribPointer(
-            3,
-            1,
-            GL_FLOAT,
-            GL_FALSE,
-            stride,
-            (void*)((2+4+2) * sizeof(float))
-        );
-        glBindVertexArray(0);
-    }
-
-    void render() {
-        glBindVertexArray(vao);
-        glDrawElements(GL_TRIANGLES, sprites.size() * 6, GL_UNSIGNED_INT, 0);
-    }
-};
+#include "tilemap_batch.cpp"
+#include "sprite_batch.cpp"
 
 void opengl_dbg_callback(
     GLenum source,
@@ -322,26 +197,7 @@ bool lie_in_rect(glm::vec2 p, glm::vec2 rect_pos, glm::vec2 rect_size) {
     return false;
 }
 
-#include "wall_connect.cpp"
-
-u8 get_up_connect(u16 tile)    { return (tile>>9) & 7; }
-u8 get_right_connect(u16 tile) { return (tile>>6) & 7; }
-u8 get_down_connect(u16 tile)  { return (tile>>3) & 7; }
-u8 get_left_connect(u16 tile)  { return (tile>>0) & 7; }
-
-void set_up_connect(u16* tile, u8 c)    { *tile |= ((u16)c<<9); }
-void set_right_connect(u16* tile, u8 c) { *tile |= ((u16)c<<6); }
-void set_down_connect(u16* tile, u8 c)  { *tile |= ((u16)c<<3); }
-void set_left_connect(u16* tile, u8 c)  { *tile |= ((u16)c<<0); }
-
-u16 get_wall_with_neis(u16 utile, u16 rtile, u16 dtile, u16 ltile) {
-    u16 wall = 0;
-    set_up_connect(&wall, get_down_connect(utile));
-    set_right_connect(&wall, get_left_connect(rtile));
-    set_down_connect(&wall, get_up_connect(dtile));
-    set_left_connect(&wall, get_right_connect(ltile));
-    return wall;
-}
+#include "wallcon.cpp"
 
 int main() {
     srand(time(NULL));
@@ -383,11 +239,10 @@ int main() {
 
     if (!atlas.load_from_file("res/atlas.png")) return 1;
     atlas.init_for_render();
+    init_wallcon();
 
     Camera camera;
 
-    SpriteBatch ground;
-    SpriteBatch foreground;
     glm::vec2 grass1_pos = glm::vec2(4*32, 0*32);
     glm::vec2 grass2_pos = glm::vec2(5*32, 0*32);
     glm::vec2 grass3_pos = glm::vec2(6*32, 0*32);
@@ -397,63 +252,7 @@ int main() {
     const glm::vec4 tree2 = glm::vec4(96, 64, 32, 70);
     const glm::vec2 wall_size = glm::vec2(32, 32);
 
-    std::unordered_map<int, glm::vec2> wall_pos;
-    glm::ivec2 wall_atlas_pos = glm::vec2(4, 2);
-    glm::ivec2 wall_atlas_size = glm::vec2(8, 6);
-    for (int y = 0; y < wall_atlas_size.y; y++) {
-        for (int x = 0; x < wall_atlas_size.x; x++) {
-            u16 id = wall_connect[y*wall_atlas_size.x+x];
-            wall_pos[id] = glm::vec2((wall_atlas_pos.x+x)*32, (wall_atlas_pos.y+y)*32);
-            printf("putting %5d as (%4.3f, %7.3f)\n", id, wall_pos[id].x, wall_pos[id].y);
-        }
-        printf("\n");
-    }
-
-    u16 u = 0b000'000'010'010;
-    u16 r = 0b000'010'000'010;
-    u16 d = 0b010'000'010'000;
-    u16 l = 0b000'000'010'000;
-
-    foreground.sprites.push_back(Sprite {
-        glm::vec2(0, 32),
-        wall_size,
-        wall_pos[u],
-        wall_size,
-        2
-    });
-
-    foreground.sprites.push_back(Sprite {
-        glm::vec2(32, 0),
-        wall_size,
-        wall_pos[r],
-        wall_size,
-        2
-    });
-
-    foreground.sprites.push_back(Sprite {
-        glm::vec2(0, -32),
-        wall_size,
-        wall_pos[d],
-        wall_size,
-        2
-    });
-
-    foreground.sprites.push_back(Sprite {
-        glm::vec2(-32, 0),
-        wall_size,
-        wall_pos[l],
-        wall_size,
-        2
-    });
-
-    foreground.sprites.push_back(Sprite {
-        glm::vec2(0, 0),
-        wall_size,
-        wall_pos[get_wall_with_neis(u, r, d, l)],
-        wall_size,
-        2
-    });
-
+    SpriteBatch ground;
     for (int y = -8; y < 8; y++) {
         for (int x = -8; x < 8; x++) {
             float r = Random::real(1.0f);
@@ -471,31 +270,19 @@ int main() {
         }
     }
 
-    int num_trees = 40;//Random::integer(20);
-    printf("num_trees: %d\n", num_trees);
-    for (int i = 0; i < num_trees; i++) {
-        int x = Random::integer(16) - 8;
-        int y = Random::integer(16) - 8;
-        const glm::vec4& tree = Random::real(1) > 0.7f ? tree2 : tree1;
-        foreground.sprites.push_back(Sprite(
-            glm::vec2(x*grass_size.x, y*grass_size.y),
-            glm::vec2(tree.z, tree.w),
-            glm::vec2(tree.x, tree.y),
-            glm::vec2(tree.z, tree.w),
-            1
-        ));
-    }
-
-    ground.fill_vertex_data();
+    ground.fill_vertices_data();
     ground.fill_indices_data();
     ground.init_render_buffers();
 
-    foreground.fill_vertex_data();
-    foreground.fill_indices_data();
-    foreground.init_render_buffers();
+    TilemapBatch tilebatch;
+    tilebatch.init(32);
 
-    /* for (usize i = 0; i < batch.vertex_data.size(); i++) { */
-    /*     printf("%9.3f ", batch.vertex_data[i]); */
+    tilebatch.fill_vertices_data();
+    tilebatch.fill_indices_data();
+    tilebatch.init_render_buffers();
+
+    /* for (usize i = 0; i < batch.vertices_data.size(); i++) { */
+    /*     printf("%9.3f ", batch.vertices_data[i]); */
     /*     if ((i+1) % 9 == 0) printf("\n"); */
     /*     if ((i+1) % 36 == 0) printf("\n"); */
     /* } */
@@ -589,11 +376,81 @@ int main() {
             glm::inverse(camera.proj * camera.view) *
             glm::vec4(mouse_ndc.x, mouse_ndc.y, 0.0f, 1.0f);
 
-        if (just_lmouse_down) {
-            glm::vec2 tilepos = floor(mouse_world / wall_size) * wall_size;
+        if (lmouse_down) {
+            glm::ivec2 placetile_pos = floor(mouse_world / wall_size);
+
+            glm::ivec2 utile_pos = glm::ivec2(placetile_pos.x,   placetile_pos.y+1);
+            glm::ivec2 rtile_pos = glm::ivec2(placetile_pos.x+1, placetile_pos.y);
+            glm::ivec2 dtile_pos = glm::ivec2(placetile_pos.x,   placetile_pos.y-1);
+            glm::ivec2 ltile_pos = glm::ivec2(placetile_pos.x-1, placetile_pos.y);
+
+            glm::ivec2 utile_atpos = tilebatch.get_tile(utile_pos);
+            glm::ivec2 rtile_atpos = tilebatch.get_tile(rtile_pos);
+            glm::ivec2 dtile_atpos = tilebatch.get_tile(dtile_pos);
+            glm::ivec2 ltile_atpos = tilebatch.get_tile(ltile_pos);
+
+            int utile = wallcon_atlas_to_connect(utile_atpos);
+            int rtile = wallcon_atlas_to_connect(rtile_atpos);
+            int dtile = wallcon_atlas_to_connect(dtile_atpos);
+            int ltile = wallcon_atlas_to_connect(ltile_atpos);
+            int placetile = 0;
+
+            if (utile != -1) {
+                join_walls(&placetile, &utile, UP);
+                tilebatch.set_tile(utile_pos, wallcon_connect_to_atlas(utile));
+            }
+            if (rtile != -1) {
+                join_walls(&placetile, &rtile, RIGHT);
+                tilebatch.set_tile(rtile_pos, wallcon_connect_to_atlas(rtile));
+            }
+            if (dtile != -1) {
+                join_walls(&placetile, &dtile, DOWN);
+                tilebatch.set_tile(dtile_pos, wallcon_connect_to_atlas(dtile));
+            }
+            if (ltile != -1) {
+                join_walls(&placetile, &ltile, LEFT);
+                tilebatch.set_tile(ltile_pos, wallcon_connect_to_atlas(ltile));
+            }
+
+            tilebatch.set_tile(placetile_pos, wallcon_connect_to_atlas(placetile));
         }
 
-        if (just_rmouse_down) {
+        if (rmouse_down) {
+            glm::ivec2 erasetile_pos = floor(mouse_world / wall_size);
+
+            glm::ivec2 utile_pos = glm::ivec2(erasetile_pos.x,   erasetile_pos.y+1);
+            glm::ivec2 rtile_pos = glm::ivec2(erasetile_pos.x+1, erasetile_pos.y);
+            glm::ivec2 dtile_pos = glm::ivec2(erasetile_pos.x,   erasetile_pos.y-1);
+            glm::ivec2 ltile_pos = glm::ivec2(erasetile_pos.x-1, erasetile_pos.y);
+
+            glm::ivec2 utile_atpos = tilebatch.get_tile(utile_pos);
+            glm::ivec2 rtile_atpos = tilebatch.get_tile(rtile_pos);
+            glm::ivec2 dtile_atpos = tilebatch.get_tile(dtile_pos);
+            glm::ivec2 ltile_atpos = tilebatch.get_tile(ltile_pos);
+
+            int utile = wallcon_atlas_to_connect(utile_atpos);
+            int rtile = wallcon_atlas_to_connect(rtile_atpos);
+            int dtile = wallcon_atlas_to_connect(dtile_atpos);
+            int ltile = wallcon_atlas_to_connect(ltile_atpos);
+
+            if (utile != -1) {
+                disjoin_walls(NULL, &utile, UP);
+                tilebatch.set_tile(utile_pos, wallcon_connect_to_atlas(utile));
+            }
+            if (rtile != -1) {
+                disjoin_walls(NULL, &rtile, RIGHT);
+                tilebatch.set_tile(rtile_pos, wallcon_connect_to_atlas(rtile));
+            }
+            if (dtile != -1) {
+                disjoin_walls(NULL, &dtile, DOWN);
+                tilebatch.set_tile(dtile_pos, wallcon_connect_to_atlas(dtile));
+            }
+            if (ltile != -1) {
+                disjoin_walls(NULL, &ltile, LEFT);
+                tilebatch.set_tile(ltile_pos, wallcon_connect_to_atlas(ltile));
+            }
+
+            tilebatch.set_tile(erasetile_pos, glm::ivec2(0, 0));
         }
 
         float diafactor = 1.0f;
@@ -604,19 +461,16 @@ int main() {
 
         camera.pos += dt * camera.vel;
 
-        ground.fill_vertex_data();
-        ground.fill_indices_data();
-        ground.update_render_buffers();
-
-        foreground.fill_vertex_data();
-        foreground.fill_indices_data();
-        foreground.update_render_buffers();
-
+        // ================ RENDER ====================
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
         glClear(GL_COLOR_BUFFER_BIT);
+
+        ground.fill_vertices_data();
+        ground.fill_indices_data();
+        ground.update_render_buffers();
 
         camera.set_proj();
         camera.set_view();
@@ -636,7 +490,7 @@ int main() {
         sprite_shader.upload_mat4("view", camera.view);
         sprite_shader.upload_float("time", (float)elapsed);
         ground.render();
-        foreground.render();
+        tilebatch.render();
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
